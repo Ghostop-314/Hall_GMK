@@ -1,0 +1,44 @@
+{
+  "cli": {
+    "version": ">= 7.6.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_SHEETS_API_KEY": "AIzaSyCAWlja4NXegn8bb2kpkYHzPzCFWZcKiu0"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_SHEETS_API_KEY": "AIzaSyCAWlja4NXegn8bb2kpkYHzPzCFWZcKiu0"
+      }
+    },
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_SHEETS_API_KEY": "AIzaSyCAWlja4NXegn8bb2kpkYHzPzCFWZcKiu0"
+      }
+    },
+    "simulator": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_SHEETS_API_KEY": "AIzaSyCAWlja4NXegn8bb2kpkYHzPzCFWZcKiu0"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

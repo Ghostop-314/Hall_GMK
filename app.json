@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "hall-availability",
-    "slug": "hall-availability",
+    "name": "GMK Sheets",
+    "slug": "gmkdatefinder",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -25,8 +25,10 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
-        }
-      }
+        },
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.yourdomain.hallavailability"
     },
     "android": {
       "adaptiveIcon": {
@@ -41,7 +43,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "d6564d27-824e-4a00-9874-1720ed49a913"
       }
     }
   }

@@ -89,14 +89,17 @@ export const getLocalIpAddress = () => {
     if (Platform.OS === 'android') {
       const debugURL = NativeModules.SourceCode?.getConstants()?.debugURL;
       if (debugURL) {
-        const hostname = new URL(debugURL).hostname;
-        if (hostname && hostname !== 'localhost') {
-          return hostname;
+        const url = new URL(debugURL);
+        if (url.hostname && url.hostname !== 'localhost') {
+          console.log(`Using hostname from debugURL: ${url.hostname}`);
+          return `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}`;
         }
       }
       const serverHost = NativeModules.SourceCode?.getConstants()?.serverHost;
       if (serverHost) {
-        return serverHost.split(':')[0];
+        console.log(`Using serverHost: ${serverHost}`);
+        // Ensure it's a full URL if it's just host:port
+        return serverHost.startsWith('http') ? serverHost : `exp://${serverHost}`;
       }
     }
 

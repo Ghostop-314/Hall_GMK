@@ -27,8 +27,7 @@ module.exports = ({ config }) => {
   // Get machine's local IP for dev server
   const localIp = getLocalIpAddress();
   
-  // Set a base configuration
-  const baseConfig = {
+  return {
     ...config,
     name: config.name || 'Hall Availability',
     version: pkg.version,
@@ -53,7 +52,7 @@ module.exports = ({ config }) => {
       enableDetailedLogging: true,
       localIpAddress: localIp, // Make IP available to app
       eas: {
-        projectId: process.env.EXPO_PROJECT_ID || "your-project-id"
+        projectId: 'd6564d27-824e-4a00-9874-1720ed49a913',
       }
     },
     // Custom androidNavigationBar settings for better UX
@@ -62,51 +61,14 @@ module.exports = ({ config }) => {
       barStyle: 'dark-content',
       backgroundColor: '#FFFFFF',
     },
-  };
-
-  // Platform-specific configurations
-  if (config.android) {
-    baseConfig.android = {
-      ...config.android,
-      // Configure the dev server to avoid Java IO section errors
-      devServer: {
-        // Try to use a different port to avoid conflicts
-        port: 8083,
-        host: localIp, // Explicitly set host for physical devices
-        // Increase timeouts to handle slower physical device connections
-        pollingIntervalMillis: 5000, // Poll for changes less frequently
-        retryTimeoutMillis: 10000, // Wait longer before timing out 
-      },
-      // Enable adaptive navigation components
-      navigationBarColor: 'transparent',
-      softwareKeyboardLayoutMode: 'pan',
-      // Set network security config for allowing local connections
-      networkSecurityConfig: {
-        cleartextTrafficPermitted: true, // Allow cleartext traffic for development
-      },
-      // Add package configuration for improved stability
-      package: config.android?.package || "com.hallavailability.app",
-    };
-  }
-
-  // Configure iOS-specific settings
-  if (config.ios) {
-    baseConfig.ios = {
-      ...config.ios,
-      // Enable background updates
+    android: {
+      package: "com.yourdomain.hallavailability"
+    },
+    ios: {
+      bundleIdentifier: "com.yourdomain.hallavailability",
       infoPlist: {
-        ...config?.ios?.infoPlist,
-        NSAppTransportSecurity: {
-          NSAllowsArbitraryLoads: true, // For development only - allows local server connections
-          NSExceptionDomains: {
-            localhost: {
-              NSExceptionAllowsInsecureHTTPLoads: true,
-            },
-          },
-        },
-      },
-    };
-  }
-
-  return baseConfig;
+        ITSAppUsesNonExemptEncryption: false
+      }
+    }
+  };
 };
