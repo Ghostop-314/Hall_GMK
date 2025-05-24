@@ -10,19 +10,17 @@ if (!API_KEY) {
 console.log('API KEY LENGTH:', API_KEY ? API_KEY.length : 0); // Log length of API key for debugging (don't log the actual key for security)
 
 const getSheetDetails = (date: Date) => {
-    // Using Title Case for month names as the Google Sheets API expects
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const monthIndex = date.getMonth();
-    const monthName = months[monthIndex];
+    const monthNameAbbrev = months[monthIndex]; // e.g., 'MAY', 'JUN'
     const year = date.getFullYear();
     
-    // Get days in current month
     const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
     
     return {
-        sheetName: `'${monthName} ${year}'!`,
+        sheetName: `${monthNameAbbrev} ${year}`, // e.g., "MAY 2025", "JUN 2025"
         daysInMonth,
-        monthName,
+        monthName: monthNameAbbrev, // Use abbreviated name here too for consistency
         year
     };
 };
@@ -101,13 +99,20 @@ export const formatDate = (date: Date): string => {
 
 const processData = async (location: string, config: LocationConfig, selectedDate: Date, allResults: HallData[]) => {
     const typedLocation = location as 'GMK Banquets Tathawade' | 'GMK Banquets Ravet';
-    const { sheetName } = getSheetDetails(selectedDate);
+    const { sheetName } = getSheetDetails(selectedDate); // sheetName is now "MONTH YEAR", e.g., "JUN 2025"
     const dayOfMonth = selectedDate.getDate(); // 1-based day of month
     
     for (const hall of config.halls) {
         try {
-            const morningUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${sheetName}${hall.morningRange}?key=${API_KEY}&alt=json`;
-            const eveningUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${sheetName}${hall.eveningRange}?key=${API_KEY}&alt=json`;
+            // Construct the full sheet name + range string, e.g., "'JUN 2025'!B4:B33"
+            const morningRangeString = `'${sheetName}'!${hall.morningRange}`;
+            // URL-encode the entire string
+            const encodedMorningRange = encodeURIComponent(morningRangeString);
+            const morningUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${encodedMorningRange}?key=${API_KEY}&alt=json`;
+
+            const eveningRangeString = `'${sheetName}'!${hall.eveningRange}`;
+            const encodedEveningRange = encodeURIComponent(eveningRangeString);
+            const eveningUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${encodedEveningRange}?key=${API_KEY}&alt=json`;
 
             console.log(`[${location} - ${hall.name}] Fetching from URLs:`, { morningUrl, eveningUrl });
 
@@ -242,7 +247,7 @@ const processData = async (location: string, config: LocationConfig, selectedDat
                         currentStatus = 'Booked';
                     } else {
                         // Case 4: Cell has some other unexpected text.
-                        console.warn(`${location} - ${hall.name} ${timeSlot}: Unexpected value \'\'\'${cleanValue}\'\'\'. Interpreting as Booked.`);
+                        console.warn(`${location} - ${hall.name} ${timeSlot}: Unexpected value '''${cleanValue}'''. Interpreting as Booked.`);
                         currentStatus = 'Booked';
                     }
                 }
@@ -266,7 +271,7 @@ const processData = async (location: string, config: LocationConfig, selectedDat
             if (morningData.values && morningData.values.length > effectiveMorningDataIndex) {
                 const rowData = morningData.values[effectiveMorningDataIndex];
                 const valueFromArray = rowData && rowData.length > 0 ? rowData[0] : undefined;
-                console.log(`[${location} - ${hall.name}] Morning: Extracted value for effectiveDataIndex ${effectiveMorningDataIndex}: \'\'\'${valueFromArray}\'\'\'. Raw row data at index:`, rowData);
+                console.log(`[${location} - ${hall.name}] Morning: Extracted value for effectiveDataIndex ${effectiveMorningDataIndex}: '''${valueFromArray}'''. Raw row data at index:`, rowData);
                 processSlot(valueFromArray, 'Morning');
             } else {
                 console.log(`[${location} - ${hall.name}] Morning: No data at effectiveDataIndex ${effectiveMorningDataIndex} (total rows: ${morningData.values ? morningData.values.length : 'N/A - API returned no values array'}). Passing undefined to processSlot.`);
@@ -278,7 +283,7 @@ const processData = async (location: string, config: LocationConfig, selectedDat
             if (eveningData.values && eveningData.values.length > effectiveEveningDataIndex) {
                 const rowData = eveningData.values[effectiveEveningDataIndex];
                 const valueFromArray = rowData && rowData.length > 0 ? rowData[0] : undefined;
-                console.log(`[${location} - ${hall.name}] Evening: Extracted value for effectiveDataIndex ${effectiveEveningDataIndex}: \'\'\'${valueFromArray}\'\'\'. Raw row data at index:`, rowData);
+                console.log(`[${location} - ${hall.name}] Evening: Extracted value for effectiveDataIndex ${effectiveEveningDataIndex}: '''${valueFromArray}'''. Raw row data at index:`, rowData);
                 processSlot(valueFromArray, 'Evening');
             } else {
                 console.log(`[${location} - ${hall.name}] Evening: No data at effectiveDataIndex ${effectiveEveningDataIndex} (total rows: ${eveningData.values ? eveningData.values.length : 'N/A - API returned no values array'}). Passing undefined to processSlot.`);
@@ -397,14 +402,16 @@ export const checkSheetOffsets = async () => {
     
     for (const [location, config] of Object.entries(LOCATIONS)) {
         console.log(`\n--- Checking ${location} ---`);
-        const { sheetName } = getSheetDetails(date);
+        const { sheetName } = getSheetDetails(date); // sheetName is now "MONTH YEAR", e.g., "MAY 2025"
         
         for (const hall of config.halls) {
             try {
                 console.log(`\n${location} - ${hall.name}:`);
                 
                 // Fetch morning data to examine structure
-                const morningUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${sheetName}${hall.morningRange}?key=${API_KEY}&alt=json`;
+                const morningRangeString = `'${sheetName}'!${hall.morningRange}`;
+                const encodedMorningRange = encodeURIComponent(morningRangeString);
+                const morningUrl = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${encodedMorningRange}?key=${API_KEY}&alt=json`;
                 console.log(`- Fetching morning data from: ${morningUrl}`);
                 
                 const morningResponse = await fetch(morningUrl);
