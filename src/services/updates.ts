@@ -34,8 +34,16 @@ export const checkForUpdatesAndReload = async () => {
       
       // For development, let's verify connection to Metro
       try {
-        // A simple test to check if Metro is reachable
-        const testUrl = `${getDevServerUrl()}/status`;
+        // We need to use http:// for fetch, not exp://
+        const hostAndPort = getLocalIpAddress();
+        let host = hostAndPort;
+        let port = '8081';
+        
+        if (hostAndPort.includes(':')) {
+          [host, port] = hostAndPort.split(':');
+        }
+        
+        const testUrl = `http://${host}:${port}/status`;
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         
@@ -92,14 +100,19 @@ export const getLocalIpAddress = () => {
         const url = new URL(debugURL);
         if (url.hostname && url.hostname !== 'localhost') {
           console.log(`Using hostname from debugURL: ${url.hostname}`);
-          return `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}`;
+          // Return just hostname, or hostname:port
+          return url.port ? `${url.hostname}:${url.port}` : url.hostname;
         }
       }
       const serverHost = NativeModules.SourceCode?.getConstants()?.serverHost;
       if (serverHost) {
         console.log(`Using serverHost: ${serverHost}`);
-        // Ensure it's a full URL if it's just host:port
-        return serverHost.startsWith('http') ? serverHost : `exp://${serverHost}`;
+        // serverHost might be 'hostname:port' or just 'hostname'
+        // It should not contain a scheme here. If it does, strip it.
+        if (serverHost.includes('://')) {
+          return new URL(serverHost).host; // Extracts hostname:port or just hostname
+        }
+        return serverHost;
       }
     }
 
@@ -107,65 +120,58 @@ export const getLocalIpAddress = () => {
     if (Platform.OS === 'ios') {
       const sourceBundleHost = NativeModules.SourceCode?.getConstants()?.sourceBundleHost;
       if (sourceBundleHost) {
+        // This should be just hostname or hostname:port
         return sourceBundleHost;
       }
       const scriptURL = NativeModules.SourceCode?.getConstants()?.scriptURL;
       if (scriptURL) {
-        const match = scriptURL.match(/https?:\/\/([^:]+):/);
-        if (match?.[1]) {
-          return match[1];
-        }
+        // scriptURL is a full URL, e.g., http://hostname:port/...
+        // We need to extract hostname:port or just hostname
+        const url = new URL(scriptURL);
+        return url.host; // host includes hostname and port if present
       }
     }
 
     // Use fallback IPs if everything else fails
-    const fallbackIPs = ['192.168.0.1','192.168.1.1','192.168.0.113','10.0.2.2','localhost','127.0.0.1'];
+    // These should be just IPs/hostnames, not full URLs
+    const fallbackIPs = ['192.168.0.1', '192.168.1.1', '192.168.0.113', '10.0.2.2', 'localhost', '127.0.0.1'];
+    console.warn('Falling back to default IP list.');
     return fallbackIPs[0];
   } catch (error) {
     console.error('Error determining IP address:', error);
-    return '127.0.0.1';
+    return '127.0.0.1'; // Default fallback
   }
 };
 
 // Get the Expo server URL based on the current environment
 export const getDevServerUrl = () => {
-  const ipAddress = getLocalIpAddress();
-  console.log(`Using IP address for development server: ${ipAddress}`);
+  const hostAndPort = getLocalIpAddress(); // This now returns hostname or hostname:port
+  console.log(`Using host/port for development server: ${hostAndPort}`);
   
-  // Check if there's an explicitly set port from Expo
-  let port = '8081'; // Default Metro port
-  try {
-    // Try to get port from Expo environment if available
-    const Constants = require('expo-constants').default;
-    const manifestUrl = Constants.manifest?.hostUri || Constants.expoConfig?.hostUri;
-    if (manifestUrl) {
-      const match = manifestUrl.match(/:(\d+)/);
-      if (match && match[1]) {
-        port = match[1];
-        console.log(`Found Expo manifest port: ${port}`);
-      }
-    }
-  } catch (e) {
-    console.log('Could not get Expo port from Constants, using default');
+  // The scheme for Expo Go connection is exp://
+  // Metro bundler typically runs on 8081 if not specified otherwise by hostAndPort
+  let port = '8081';
+  let host = hostAndPort;
+
+  if (hostAndPort.includes(':')) {
+    [host, port] = hostAndPort.split(':');
+  } else {
+    // If getLocalIpAddress only returned a host, assume port 8081 for the exp:// URL
+    // unless we have a better way to get the specific Metro port for exp://
+    // For now, let's try to be consistent with how Metro itself reports its URL.
+    // If hostAndPort from getLocalIpAddress was just '192.168.66.109', Metro might still be on 8081.
+    // However, if getLocalIpAddress got '192.168.66.109:19000' from manifest, we should use that.
+    // The original logic for getDevServerUrl tried to get port from Constants.manifest.hostUri
+    // Let's re-evaluate if hostAndPort already contains the correct port for exp://
   }
+  // If hostAndPort already includes the port (e.g., "192.168.1.5:8081"), use it directly.
+  // If it's just an IP (e.g., "192.168.1.5"), Metro usually defaults to 8081 for the exp:// protocol.
+  // The `getLocalIpAddress` should ideally return what Metro is actually using.
   
-  // Fallback ports to try - we've seen 8081, 8082, 8083 in use
-  const ports = [port, '8081', '8082', '8083'];
+  const baseUrl = `exp://${hostAndPort}`; // hostAndPort should be like '192.168.66.109:8081' or from manifest
   
-  // This is the URL format that the Expo server uses
-  const baseUrl = Platform.select({
-    ios: `exp://${ipAddress}:${ports[0]}`,
-    android: `exp://${ipAddress}:${ports[0]}`,
-    default: `exp://${ipAddress}:${ports[0]}`,
-  });
-  
-  console.log(`Development server URL: ${baseUrl}`);
-  
-  // Also log alternate URLs for troubleshooting
-  ports.slice(1).forEach(altPort => {
-    console.log(`Alternative server URL: exp://${ipAddress}:${altPort}`);
-  });
-  
+  console.log(`Development server URL for Expo Go: ${baseUrl}`);
+    
   return baseUrl;
 };
 
@@ -175,20 +181,20 @@ export const verifyDevServerConnection = async (): Promise<boolean> => {
 
   try {
     // Determine host and port for Metro status endpoint
-    const ipAddress = getLocalIpAddress();
-    let port = '8081';
-    try {
-      const Constants = require('expo-constants').default;
-      const hostUri = Constants.manifest?.hostUri || Constants.expoConfig?.hostUri;
-      const match = hostUri?.match(/:(\d+)/);
-      if (match?.[1]) {
-        port = match[1];
-      }
-    } catch {
-      // fallback to default
-    }
+    const hostAndPort = getLocalIpAddress(); // Returns hostname or hostname:port
+    
+    let host = hostAndPort;
+    let port = '8081'; // Default Metro HTTP port
 
-    const statusUrl = `http://${ipAddress}:${port}/status`;
+    if (hostAndPort.includes(':')) {
+      const parts = hostAndPort.split(':');
+      host = parts[0];
+      port = parts[1]; // Use the port from hostAndPort if available
+    }
+    // If hostAndPort was just an IP, we assume Metro's HTTP /status is on 8081.
+
+    // The scheme for HTTP connection is http://
+    const statusUrl = `http://${host}:${port}/status`;
     console.log(`Verifying connection to Metro status endpoint: ${statusUrl}`);
 
     const controller = new AbortController();
