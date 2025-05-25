@@ -1,18 +1,20 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  Platform, 
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  Platform,
   SafeAreaView,
   Modal,
   ActivityIndicator,
   FlatList,
   Alert,
-  Linking
+  Linking,
+  TextInput // Added TextInput
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Added AsyncStorage
 import { fetchHallData, formatDate } from './src/services/api';
 import { HallData } from './src/types';
 import {
@@ -33,8 +35,15 @@ console.log('App initialized with API KEY:', apiKey ? 'Set correctly' : 'NOT SET
 console.log('Development server URL:', __DEV__ ? getDevServerUrl() : 'Production mode');
 
 const ITEMS_PER_PAGE = 20;
+const AUTH_PASSWORD = "1M@GMK#"; // Defined password
+const AUTH_STORAGE_KEY = "@gmk_hall_app_authenticated"; // AsyncStorage key
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // To show loading while checking auth
+
   const [date, setDate] = useState(new Date());
   const [tempDate, setTempDate] = useState(new Date()); // For iOS date picker
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -47,6 +56,24 @@ export default function App() {
   const [errorType, setErrorType] = useState<'network' | 'java-io' | 'update' | 'general' | null>(null);
   const [errorDetails, setErrorDetails] = useState<string>('');
   const [showAdvancedTroubleshooting, setShowAdvancedTroubleshooting] = useState(false);
+
+  // Check auth status on app load
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        const authStatus = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+        if (authStatus === 'true') {
+          setIsAuthenticated(true);
+        }
+      } catch (e) {
+        console.error("Failed to load auth status", e);
+        // Optionally handle error, e.g., show an error message
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+    checkAuthStatus();
+  }, []);
 
   // Check for updates when app launches
   useEffect(() => {
@@ -483,6 +510,58 @@ export default function App() {
     }
   };
 
+  const handlePasswordSubmit = async () => {
+    if (password === AUTH_PASSWORD) {
+      try {
+        await AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true');
+        setIsAuthenticated(true);
+        setPassword('');
+        setAuthError('');
+      } catch (e) {
+        console.error("Failed to save auth status", e);
+        setAuthError("Authentication failed. Please try again.");
+      }
+    } else {
+      setAuthError("Incorrect password. Please try again.");
+    }
+  };
+
+  if (isCheckingAuth) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={[styles.container, styles.centered]}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Checking authentication...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <LinearGradient
+          colors={['#4c669f', '#3b5998', '#192f6a']}
+          style={styles.passwordContainer}
+        >
+          <Text style={styles.passwordTitle}>Enter Password</Text>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Password"
+            placeholderTextColor="#ccc"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+          {authError ? <Text style={styles.passwordError}>{authError}</Text> : null}
+          <TouchableOpacity style={styles.passwordButton} onPress={handlePasswordSubmit}>
+            <Text style={styles.passwordButtonText}>Submit</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -597,7 +676,7 @@ export default function App() {
 
         {/* No Halls Available Message */}
         {!loading && !networkError && halls.length === 0 && (
-          <View style={styles.centered}>
+          <View style={[styles.centered, styles.noHallsContainer]}>
             <Text style={styles.noHallsText}>No halls available for selected date</Text>
             <Text style={styles.tipText}>Try selecting a different date</Text>
           </View>
@@ -610,22 +689,79 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F0F0F7', // Light gray background for the whole screen
+    backgroundColor: '#f0f0f0', 
   },
   container: {
     flex: 1,
-    paddingHorizontal: 15, // Consistent padding
-    paddingTop: Platform.OS === 'android' ? 20 : 0, // Adjust for Android status bar
+    padding: Platform.OS === 'ios' ? 20 : 15, 
+    backgroundColor: '#f0f0f0', 
+  },
+  centered: { 
+    flex: 1, // Ensure it takes up space to center content
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: { 
+    marginTop: 10,
+    fontSize: 16,
+    color: '#555', // General loading text color
+  },
+  passwordContainer: { 
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  passwordTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 30,
+    textAlign: 'center',
+  },
+  passwordInput: {
+    width: '100%',
+    height: 50,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    color: '#fff',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  passwordButton: {
+    backgroundColor: '#007AFF', 
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    borderRadius: 10,
+    elevation: 3, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  passwordButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  passwordError: {
+    color: '#ff3b30', 
+    fontSize: 14,
+    marginBottom: 15,
+    textAlign: 'center',
   },
   title: {
-    fontSize: 30, // Larger, more prominent title
-    fontWeight: '700', // Bolder
-    color: '#1C1C1E', // Darker text for better contrast
+    fontSize: Platform.OS === 'ios' ? 28 : 26, 
+    fontWeight: '700', 
+    color: '#1C1C1E', 
     textAlign: 'center',
-    marginVertical: 20, // More spacing around title
+    marginVertical: 20, 
   },
-  // Date Picker Styles
-  dateContainer: { // Added
+  dateContainer: { 
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -640,27 +776,27 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
-  dateWrapper: { // Added
+  dateWrapper: { 
     flexDirection: 'column',
   },
-  dateLabel: { // Added
+  dateLabel: { 
     fontSize: 14,
-    color: '#8A8A8E', // Softer color for label
+    color: '#8A8A8E', 
     marginBottom: 5,
   },
-  dateButton: { // Added
-    backgroundColor: 'transparent', // Cleaner look
+  dateButton: { 
+    backgroundColor: 'transparent', 
   },
-  dateButtonText: { // Added
+  dateButtonText: { 
     fontSize: 18,
     fontWeight: '600',
-    color: '#007AFF', // Standard iOS blue
+    color: '#007AFF', 
   },
   findButton: {
-    backgroundColor: '#007AFF', // iOS blue
+    backgroundColor: '#007AFF', 
     paddingVertical: 12,
     paddingHorizontal: 25,
-    borderRadius: 10, // Softer corners
+    borderRadius: 10, 
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#007AFF',
@@ -674,41 +810,34 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
   },
-  // Loader Styles
-  loaderContainer: { // Added
-    flex: 1,
+  loaderContainer: { 
+    flex: 1, // Takes up available space to center content
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
-  loadingText: { // Added
-    marginTop: 10,
-    fontSize: 16,
-    color: '#8A8A8E',
-  },
-  // Error Display Styles
   errorContainer: {
     margin: 15,
     padding: 15,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)', // Frosted glass effect
-    alignItems: 'center', // Center content
-    overflow: 'hidden', // For BlurView
+    backgroundColor: 'rgba(255, 255, 255, 0.8)', 
+    alignItems: 'center', 
+    overflow: 'hidden', 
   },
-  errorTypeTag: { // Added
+  errorTypeTag: { 
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 15,
     marginBottom: 10,
-    alignSelf: 'flex-start', // Align to the left
+    alignSelf: 'flex-start', 
   },
-  errorTypeTagNetwork: { // Added
-    backgroundColor: '#FF9500', // Orange for network errors
+  errorTypeTagNetwork: { 
+    backgroundColor: '#FF9500', 
   },
-  errorTypeTagJava: { // Added
-    backgroundColor: '#FF3B30', // Red for Java/connection errors
+  errorTypeTagJava: { 
+    backgroundColor: '#FF3B30', 
   },
-  errorTypeText: { // Added
+  errorTypeText: { 
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 12,
@@ -716,25 +845,17 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#D70015', // More prominent error color
+    color: '#D70015', 
     textAlign: 'center',
     marginBottom: 10,
   },
-  errorSubText: { // Added (placeholder, can be refined)
+  errorSubText: { 
     fontSize: 14,
     color: '#333',
     textAlign: 'center',
     marginBottom: 10,
   },
-  troubleshootingText: { // Renamed from troubleshootingStep for consistency
-    fontSize: 15,
-    color: '#3C3C43', // Slightly darker for readability
-    textAlign: 'left', // Align steps to the left
-    lineHeight: 22, // Better line spacing
-    marginBottom: 8, // Space between steps
-    width: '100%', // Ensure full width for alignment
-  },
-  troubleshootingStep: { // Added
+  troubleshootingStep: { 
     fontSize: 15,
     color: '#3C3C43',
     textAlign: 'left',
@@ -742,36 +863,36 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     width: '100%',
   },
-  advancedButton: { // Added
+  advancedButton: { 
     marginTop: 10,
     paddingVertical: 8,
     paddingHorizontal: 15,
-    backgroundColor: '#E5E5EA', // Light gray for secondary actions
+    backgroundColor: '#E5E5EA', 
     borderRadius: 8,
   },
-  advancedButtonText: { // Added
-    color: '#007AFF', // iOS blue
+  advancedButtonText: { 
+    color: '#007AFF', 
     fontSize: 14,
     fontWeight: '500',
   },
-  advancedDetailsContainer: { // Added
+  advancedDetailsContainer: { 
     marginTop: 10,
     padding: 10,
-    backgroundColor: '#F0F0F7', // Slightly different background
+    backgroundColor: '#F0F0F7', 
     borderRadius: 8,
     width: '100%',
   },
-  advancedDetailsText: { // Added
+  advancedDetailsText: { 
     fontSize: 13,
     color: '#555',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', // Monospace for details
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', 
   },
   retryButton: {
-    backgroundColor: '#34C759', // iOS green for positive action
+    backgroundColor: '#34C759', 
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 10,
-    marginTop: 15, // More space above retry
+    marginTop: 15, 
     shadowColor: '#34C759',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
@@ -784,7 +905,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   updateButton: {
-    backgroundColor: '#5856D6', // iOS purple for secondary action
+    backgroundColor: '#5856D6', 
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 10,
@@ -800,53 +921,52 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
   },
-  // Hall List Styles
-  list: { // Added
+  list: { 
     flex: 1,
   },
-  listContent: { // Added
-    paddingBottom: 20, // Space at the bottom of the list
+  listContent: { 
+    paddingBottom: 20, 
   },
   sectionHeader: {
-    backgroundColor: '#E5E5EA', // Lighter gray for section headers
+    backgroundColor: '#E5E5EA', 
     paddingVertical: 8,
     paddingHorizontal: 15,
-    marginTop: 15, // Space above section headers
+    marginTop: 15, 
     marginBottom: 5,
     borderRadius: 8,
   },
   sectionHeaderText: {
-    fontSize: 18, // Larger section header text
-    fontWeight: '600', // Bolder
-    color: '#3C3C43', // Darker text
+    fontSize: 18, 
+    fontWeight: '600', 
+    color: '#3C3C43', 
   },
   hallItem: {
-    backgroundColor: '#FFFFFF', // White cards for halls
+    backgroundColor: '#FFFFFF', 
     padding: 15,
-    borderRadius: 12, // More rounded corners
-    marginBottom: 12, // Space between hall items
+    borderRadius: 12, 
+    marginBottom: 12, 
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08, // Softer shadow
+    shadowOpacity: 0.08, 
     shadowRadius: 4,
     elevation: 2,
   },
   hallName: {
-    fontSize: 20, // Larger hall name
-    fontWeight: '600', // Bolder
+    fontSize: 20, 
+    fontWeight: '600', 
     color: '#1C1C1E',
-    marginBottom: 10, // Space below hall name
+    marginBottom: 10, 
   },
   slotsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around', // Distribute slots evenly
+    justifyContent: 'space-around', 
   },
   timeSlotBadge: {
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8, // Rounded badges
+    borderRadius: 8, 
     alignItems: 'center',
-    minWidth: 120, // Ensure badges have a decent width
+    minWidth: 120, 
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -854,75 +974,68 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   availableBadge: {
-    backgroundColor: '#E0F8E9', // Lighter green for available
+    backgroundColor: '#E0F8E9', 
   },
   bookedBadge: {
-    backgroundColor: '#FFEBEE', // Lighter red for booked
+    backgroundColor: '#FFEBEE', 
   },
   timeSlotText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#555', // Consistent text color for slot type
-    marginBottom: 4,
+    color: '#1C1C1E', // Darker text for better contrast on light badges
+    marginBottom: 3,
   },
   statusText: {
-    fontSize: 16,
-    fontWeight: '700', // Bolder status
+    fontSize: 13,
+    fontWeight: 'bold',
   },
-  // Modal (iOS DatePicker) Styles
+  // iOS Specific Date Picker Modal Styles
   modalContainerIOS: {
     flex: 1,
-    justifyContent: 'flex-end', // Picker at the bottom
+    justifyContent: 'flex-end', // Appears from bottom
     backgroundColor: 'rgba(0,0,0,0.4)', // Dimmed background
   },
   modalContentIOS: {
-    backgroundColor: '#F9F9F9', // Off-white, common for iOS modals
-    borderTopLeftRadius: 20, // Rounded top corners
+    backgroundColor: '#FFFFFF', // White background for the picker
+    borderTopLeftRadius: 20, // Rounded corners
     borderTopRightRadius: 20,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 0, // Safe area for bottom
+    paddingBottom: Platform.OS === 'ios' ? 30 : 10, // Safe area padding for bottom
   },
   pickerHeaderIOS: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#D1D1D6', // Light separator line
+    borderBottomColor: '#E5E5EA', // Light separator line
   },
   modalButtonIOS: {
-    padding: 8,
+    padding: 5,
   },
   modalButtonTextIOS: {
     fontSize: 17,
     color: '#007AFF', // Standard iOS blue
   },
   modalButtonConfirmIOS: {
-    fontWeight: '600', // Bolder "Done" button
+    fontWeight: '600', // Bold for "Done"
   },
   datePickerIOS: {
     height: 200, // Adjust height as needed
-    // backgroundColor: '#FFFFFF', // Can set if needed, but spinner usually has its own bg
+    width: '100%', // Full width
   },
-  // No Halls & Footer Loader Styles
-  centered: { // Added
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  noHallsText: { // Added
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#8A8A8E', // Softer text for empty state
-    marginBottom: 5,
-  },
-  tipText: { // Added
-    fontSize: 15,
-    color: '#AEAEB2', // Even softer for tips
-  },
-  footerLoader: { // Added
+  footerLoader: {
     paddingVertical: 20,
-    borderTopWidth: 1,
-    borderColor: "#CED0CE"
+  },
+  noHallsContainer: { // Added to ensure "No halls" message is also centered
+     // styles.centered already has flex:1, justifyContent and alignItems
+  },
+  noHallsText: {
+    fontSize: 18,
+    color: '#8A8A8E',
+    marginBottom: 8,
+  },
+  tipText: {
+    fontSize: 15,
+    color: '#C7C7CD',
   },
 });
