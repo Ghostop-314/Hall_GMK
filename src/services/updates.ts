@@ -86,7 +86,7 @@ export const getLocalIpAddress = () => {
     const extraIp = Constants.expoConfig?.extra?.localIpAddress;
     if (extraIp) {
       console.log(`Using local IP from config.extra: ${extraIp}`);
-      return extraIp;
+      return extraIp.includes(':') ? extraIp : `${extraIp}:8081`;
     }
   } catch {
     // expo-constants not available
@@ -100,19 +100,17 @@ export const getLocalIpAddress = () => {
         const url = new URL(debugURL);
         if (url.hostname && url.hostname !== 'localhost') {
           console.log(`Using hostname from debugURL: ${url.hostname}`);
-          // Return just hostname, or hostname:port
-          return url.port ? `${url.hostname}:${url.port}` : url.hostname;
+          return url.port ? `${url.hostname}:${url.port}` : `${url.hostname}:8081`;
         }
       }
       const serverHost = NativeModules.SourceCode?.getConstants()?.serverHost;
       if (serverHost) {
-        console.log(`Using serverHost: ${serverHost}`);
-        // serverHost might be 'hostname:port' or just 'hostname'
-        // It should not contain a scheme here. If it does, strip it.
         if (serverHost.includes('://')) {
-          return new URL(serverHost).host; // Extracts hostname:port or just hostname
+          return new URL(serverHost).host.includes(':')
+            ? new URL(serverHost).host
+            : `${new URL(serverHost).host}:8081`;
         }
-        return serverHost;
+        return serverHost.includes(':') ? serverHost : `${serverHost}:8081`;
       }
     }
 
@@ -120,15 +118,12 @@ export const getLocalIpAddress = () => {
     if (Platform.OS === 'ios') {
       const sourceBundleHost = NativeModules.SourceCode?.getConstants()?.sourceBundleHost;
       if (sourceBundleHost) {
-        // This should be just hostname or hostname:port
-        return sourceBundleHost;
+        return sourceBundleHost.includes(':') ? sourceBundleHost : `${sourceBundleHost}:8081`;
       }
       const scriptURL = NativeModules.SourceCode?.getConstants()?.scriptURL;
       if (scriptURL) {
-        // scriptURL is a full URL, e.g., http://hostname:port/...
-        // We need to extract hostname:port or just hostname
         const url = new URL(scriptURL);
-        return url.host; // host includes hostname and port if present
+        return url.host.includes(':') ? url.host : `${url.host}:8081`;
       }
     }
 
@@ -136,10 +131,10 @@ export const getLocalIpAddress = () => {
     // These should be just IPs/hostnames, not full URLs
     const fallbackIPs = ['192.168.0.1', '192.168.1.1', '192.168.0.113', '10.0.2.2', 'localhost', '127.0.0.1'];
     console.warn('Falling back to default IP list.');
-    return fallbackIPs[0];
+    return `${fallbackIPs[0]}:8081`;
   } catch (error) {
     console.error('Error determining IP address:', error);
-    return '127.0.0.1'; // Default fallback
+    return '127.0.0.1:8081';
   }
 };
 
@@ -183,14 +178,7 @@ export const verifyDevServerConnection = async (): Promise<boolean> => {
     // Determine host and port for Metro status endpoint
     const hostAndPort = getLocalIpAddress(); // Returns hostname or hostname:port
     
-    let host = hostAndPort;
-    let port = '8081'; // Default Metro HTTP port
-
-    if (hostAndPort.includes(':')) {
-      const parts = hostAndPort.split(':');
-      host = parts[0];
-      port = parts[1]; // Use the port from hostAndPort if available
-    }
+    const [host, port] = hostAndPort.split(':');
     // If hostAndPort was just an IP, we assume Metro's HTTP /status is on 8081.
 
     // The scheme for HTTP connection is http://
@@ -408,3 +396,32 @@ export const getTroubleshootingSteps = (errorType?: 'network' | 'java-io' | 'upd
       return commonSteps;
   }
 };
+
+// Updated the output sequence and added color coding for availability
+const halls = [
+  {
+    location: 'GMK BANQUETS - TATHAVDE',
+    halls: [
+      { name: 'Aster Hall', availability: 'Vcc' },
+      { name: 'Grand Hall', availability: 'Occ' },
+      { name: 'Tulip Hall', availability: 'Vcc' },
+      { name: 'Lotus Hall', availability: 'Occ' },
+    ],
+  },
+  {
+    location: 'GMK BANQUETS - RAVET',
+    halls: [
+      { name: 'Agastya Hall', availability: 'Vcc' },
+      { name: 'Vyas Hall', availability: 'Occ' },
+      { name: 'Shabri Lawn', availability: 'Vcc' },
+    ],
+  },
+];
+
+halls.forEach((banquet) => {
+  console.log(banquet.location);
+  banquet.halls.forEach((hall) => {
+    const color = hall.availability === 'Vcc' ? 'light green' : 'dark color';
+    console.log(`%c${hall.name}`, `color: ${color}; font-family: Georgia;`);
+  });
+});

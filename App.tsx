@@ -14,6 +14,7 @@ import {
   TextInput // Added TextInput
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import DatePicker from 'react-native-date-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage'; // Added AsyncStorage
 import { fetchHallData, formatDate } from './src/services/api';
 import { HallData } from './src/types';
@@ -28,6 +29,7 @@ import {
 } from './src/services/updates';
 import { LinearGradient } from 'expo-linear-gradient'; // Import LinearGradient
 import { BlurView } from 'expo-blur'; // Import BlurView for iOS-like frosted glass
+import { Image } from 'react-native'; // Ensure correct import for React Native Image component
 
 // Initialize environment variables check
 const apiKey = process.env.EXPO_PUBLIC_GOOGLE_SHEETS_API_KEY;
@@ -42,11 +44,9 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // To show loading while checking auth
-
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [date, setDate] = useState(new Date());
-  const [tempDate, setTempDate] = useState(new Date()); // For iOS date picker
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(new Date());  const [showDatePicker, setShowDatePicker] = useState(false);
   const [halls, setHalls] = useState<HallData[]>([]);
   const [displayedHalls, setDisplayedHalls] = useState<HallData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -56,6 +56,8 @@ export default function App() {
   const [errorType, setErrorType] = useState<'network' | 'java-io' | 'update' | 'general' | null>(null);
   const [errorDetails, setErrorDetails] = useState<string>('');
   const [showAdvancedTroubleshooting, setShowAdvancedTroubleshooting] = useState(false);
+  const [debugDate, setDebugDate] = useState(''); // Added for debugging
+  const [openModal, setOpenModal] = useState(false);
 
   // Check auth status on app load
   useEffect(() => {
@@ -90,7 +92,6 @@ export default function App() {
 
   // Monitor for Java IO section errors and network connectivity
   useEffect(() => {
-    // Check for any initial connection issues
     const checkConnectionStatus = async () => {
       if (__DEV__) {
         console.log('Checking development server connection on app launch...');
@@ -117,6 +118,8 @@ export default function App() {
     };
     
     checkConnectionStatus();
+    setDebugDate(formatDate(date)); // Update debugDate when date changes
+    console.log('Debug Date State:', debugDate);
     
     // Set up a periodic connection check (every 30 seconds)
     // This can help detect Java IO section errors that happen during app use
@@ -257,16 +260,11 @@ export default function App() {
     }
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
+  const handleDateChange = (selectedDate: Date) => {
     if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-      if (selectedDate) {
-        setDate(selectedDate);
-      }
+      setTempDate(selectedDate);
     } else {
-      if (selectedDate) {
-        setTempDate(selectedDate);
-      }
+      setTempDate(selectedDate);
     }
   };
 
@@ -312,7 +310,8 @@ export default function App() {
   
   // Process hall data after fetching
   const processHallData = (hallData: HallData[]) => {
-    // Group halls by location and organize data
+    console.log('Received hallData:', JSON.stringify(hallData, null, 2)); // Debug: log the actual data in detail
+
     const organizedData: HallData[] = [];
     const locationGroups = hallData.reduce((groups: { [key: string]: any }, hall) => {
       if (!groups[hall.location]) {
@@ -325,36 +324,55 @@ export default function App() {
       return groups;
     }, {});
 
-    // Convert grouped data to flat list with section headers
-    Object.entries(locationGroups).forEach(([location, halls]) => {
-      // Add location header
-      organizedData.push({
-        date: formatDate(date),
-        location: location as 'GMK Banquets Tathawade' | 'GMK Banquets Ravet',
-        hallName: '',
-        timeSlot: 'Morning',
-        status: 'Available'
-      });
+    console.log('Grouped location data:', JSON.stringify(locationGroups, null, 2)); // Debug: log grouped data in detail
 
-      // Add halls with both time slots
-      Object.entries(halls).forEach(([hallName, slots]: [string, any]) => {
+    const locationOrder: Array<'GMK Banquets Tathawade' | 'GMK Banquets Ravet'> = [
+      'GMK Banquets Tathawade',
+      'GMK Banquets Ravet'
+    ];
+
+    const hallOrder: {
+      'GMK Banquets Tathawade': string[];
+      'GMK Banquets Ravet': string[];
+    } = {
+      'GMK Banquets Tathawade': ['Aster', 'Grand', 'Tulip', 'Lotus'],
+      'GMK Banquets Ravet': ['Agastya', 'Vyas', 'Lawn']
+    };
+
+    locationOrder.forEach(location => {
+      if (locationGroups[location]) {
         organizedData.push({
           date: formatDate(date),
           location: location as 'GMK Banquets Tathawade' | 'GMK Banquets Ravet',
-          hallName,
+          hallName: '',
           timeSlot: 'Morning',
-          status: slots.Morning || 'Booked'
+          status: 'Available'
         });
-        
-        // Add evening slot for same hall
-        organizedData.push({
-          date: formatDate(date),
-          location: location as 'GMK Banquets Tathawade' | 'GMK Banquets Ravet',
-          hallName,
-          timeSlot: 'Evening',
-          status: slots.Evening || 'Booked'
+
+        hallOrder[location].forEach((hallName: string) => {
+          if (locationGroups[location][hallName]) {
+            const slots = locationGroups[location][hallName];
+            organizedData.push({
+              date: formatDate(date),
+              location: location as 'GMK Banquets Tathawade' | 'GMK Banquets Ravet',
+              hallName,
+              timeSlot: 'Morning',
+              status: slots.Morning || 'Booked'
+            });
+            organizedData.push({
+              date: formatDate(date),
+              location: location as 'GMK Banquets Tathawade' | 'GMK Banquets Ravet',
+              hallName,
+              timeSlot: 'Evening',
+              status: slots.Evening || 'Booked'
+            });
+          } else {
+            console.warn(`Hall ${hallName} missing in location ${location}`); // Debug: warn about missing halls
+          }
         });
-      });
+      } else {
+        console.warn(`Location ${location} missing in data`); // Debug: warn about missing locations
+      }
     });
 
     setHalls(organizedData);
@@ -420,116 +438,47 @@ export default function App() {
   }, [halls]);
 
   const renderDatePicker = () => {
-    if (Platform.OS === 'ios') {
-      return (
-        <Modal
-          animationType="slide"
-          transparent={true}
-          visible={showDatePicker}
-          onRequestClose={() => setShowDatePicker(false)}
-        >
-          <View style={styles.modalContainerIOS}>
-            <View style={styles.modalContentIOS}>
-              <View style={styles.pickerHeaderIOS}>
-                <TouchableOpacity onPress={() => setShowDatePicker(false)} style={styles.modalButtonIOS}>
-                  <Text style={styles.modalButtonTextIOS}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleConfirmDate} style={styles.modalButtonIOS}>
-                  <Text style={[styles.modalButtonTextIOS, styles.modalButtonConfirmIOS]}>Done</Text>
-                </TouchableOpacity>
-              </View>
-              <DateTimePicker
-                value={tempDate}
-                mode="date"
-                display="spinner" // More iOS-like
-                onChange={handleDateChange}
-                style={styles.datePickerIOS}
-                // themeVariant="light" // Optional: if you want to force light/dark
-              />
+    // Use modal for both platforms
+    return (
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showDatePicker}
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <View style={styles.modalContainerIOS}>
+          <View style={styles.modalContentIOS}>
+            <View style={styles.pickerHeaderIOS}>
+              <TouchableOpacity
+                style={styles.modalButtonIOS}
+                onPress={() => setShowDatePicker(false)}
+              >
+                <Text style={styles.modalButtonTextIOS}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButtonIOS, styles.modalButtonConfirmIOS]}
+                onPress={handleConfirmDate}
+              >
+                <Text style={styles.modalButtonTextIOS}>Done</Text>
+              </TouchableOpacity>
             </View>
+            <DatePicker
+              date={tempDate}
+              onDateChange={handleDateChange}
+              mode="date"
+              theme="dark" 
+              style={{width: 350, height: 200, backgroundColor: '#2C2C2E'}}
+            />
           </View>
-        </Modal>
-      );
-    }
-    // Android DatePicker remains the same as it uses native UI
-    return showDatePicker && (
-      <DateTimePicker
-        value={date}
-        mode="date"
-        display="default"
-        onChange={handleDateChange}
-      />
+        </View>
+      </Modal>
     );
-  };
-
-  // Handle network error retry with advanced recovery
-  const handleNetworkErrorRetry = async () => {
-    setLoading(true);
-    
-    try {
-      console.log(`Attempting error recovery...`);
-      
-      // First check if it's a Java IO error
-      if (errorType === 'java-io') {
-        // Try to handle Java IO error specifically
-        const resolved = await handleJavaIOError();
-        console.log(`Java IO error handling result: ${resolved ? 'Resolved' : 'Still having issues'}`);
-      }
-      
-      // Verify connection regardless of error type
-      const isConnected = await verifyDevServerConnection();
-      console.log(`Dev server connection check: ${isConnected ? 'Connected' : 'Failed'}`);
-      
-      // Now try to load data again - Pass the date object directly
-      console.log('Retrying data fetch with current date:', date);
-      const data = await fetchHallData(date);
-      
-      // If we got here, we successfully recovered
-      setHalls(data);
-      setPage(1);
-      setDisplayedHalls(data.slice(0, ITEMS_PER_PAGE));
-      setNetworkError(false);
-      setErrorType(null);
-      setErrorDetails('');
-    } catch (error) {
-      console.error('Error during recovery attempt:', error);
-      
-      if (error instanceof Error) {
-        // Analyze the error
-        const newErrorType = detectErrorType(error);
-        setErrorType(newErrorType);
-        setErrorDetails(error.message);
-        
-        // Log analytics data about the error
-        logErrorForAnalytics(error, `recovery-attempt`);
-      }
-      
-      setNetworkError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePasswordSubmit = async () => {
-    if (password === AUTH_PASSWORD) {
-      try {
-        await AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true');
-        setIsAuthenticated(true);
-        setPassword('');
-        setAuthError('');
-      } catch (e) {
-        console.error("Failed to save auth status", e);
-        setAuthError("Authentication failed. Please try again.");
-      }
-    } else {
-      setAuthError("Incorrect password. Please try again.");
-    }
   };
 
   if (isCheckingAuth) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={[styles.container, styles.centered]}>
+        <View style={styles.centered}>
           <ActivityIndicator size="large" color="#007AFF" />
           <Text style={styles.loadingText}>Checking authentication...</Text>
         </View>
@@ -540,24 +489,56 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <LinearGradient
-          colors={['#4c669f', '#3b5998', '#192f6a']}
-          style={styles.passwordContainer}
-        >
+        <View style={styles.passwordContainer}>
           <Text style={styles.passwordTitle}>Enter Password</Text>
+          {authError ? <Text style={styles.passwordError}>{authError}</Text> : null}
           <TextInput
             style={styles.passwordInput}
             placeholder="Password"
-            placeholderTextColor="#ccc"
+            placeholderTextColor="#B0BEC5"
+            secureTextEntry
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
           />
-          {authError ? <Text style={styles.passwordError}>{authError}</Text> : null}
-          <TouchableOpacity style={styles.passwordButton} onPress={handlePasswordSubmit}>
-            <Text style={styles.passwordButtonText}>Submit</Text>
+          <TouchableOpacity
+            style={styles.passwordButton}
+            onPress={async () => {
+              setLoading(true);
+              setAuthError('');
+              try {
+                // Simulate password check
+                await new Promise((resolve, reject) => {
+                  setTimeout(() => {
+                    if (password === AUTH_PASSWORD) {
+                      resolve(true);
+                    } else {
+                      reject(new Error('Invalid password, please try again.'));
+                    }
+                  }, 1000);
+                });
+                
+                // If successful, store auth status and reload app
+                await AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true');
+                setIsAuthenticated(true);
+              } catch (e) { // Changed variable name to avoid conflict if 'error' is defined elsewhere
+                if (e instanceof Error) {
+                  setAuthError(e.message);
+                } else {
+                  setAuthError('An unknown error occurred during authentication.');
+                }
+              } finally {
+                setLoading(false);
+              }
+            }}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.passwordButtonText}>Unlock</Text>
+            )}
           </TouchableOpacity>
-        </LinearGradient>
+        </View>
       </SafeAreaView>
     );
   }
@@ -565,13 +546,15 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Text style={styles.title}>Hall Availability</Text>
-
-        {/* Date Picker Section - Enhanced */}
-        <View style={styles.dateContainer}>
-          <View style={styles.dateWrapper}>
-            <Text style={styles.dateLabel}>Selected Date:</Text>
-            <TouchableOpacity 
+        <View style={styles.header}>
+          <Image source={require('./assets/icon.png')} style={styles.logo} resizeMode="contain" />
+          <Text style={styles.heading} numberOfLines={1}>GMK Banquets</Text>
+        </View>
+        
+        <View style={styles.dateSection}>
+          <View style={styles.dateTextContainer}>
+            <Text style={styles.dateLabel}>Selected Date</Text>
+            <TouchableOpacity
               style={styles.dateButton}
               onPress={() => {
                 setTempDate(date);
@@ -579,108 +562,90 @@ export default function App() {
               }}
             >
               <Text style={styles.dateButtonText}>
-                {formatDate(date)}
+                {debugDate} {/* Display debugDate here */}
               </Text>
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity 
+          
+          <TouchableOpacity
             style={styles.findButton}
             onPress={handleFind}
-            disabled={loading} // Disable button when loading
+            disabled={loading}
           >
-            {loading && !loadingMore ? ( // Show main loader only when not loading more
-              <ActivityIndicator size="small" color="#fff" />
+            {loading ? (
+              <ActivityIndicator size="small" color="#000000" />
             ) : (
-              <Text style={styles.findButtonText}>Find Availability</Text>
+              <Text style={styles.findButtonText}>Check</Text>
             )}
           </TouchableOpacity>
         </View>
-
+        
         {renderDatePicker()}
 
         {/* Loading State */}
-        {loading && !halls.length && !networkError && (
+        {loading && (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Loading...</Text>
+            <Text style={styles.loadingText}>Loading data, please wait...</Text>
           </View>
         )}
 
         {/* Network Error Display */}
         {networkError && (
-          <BlurView intensity={100} tint="light" style={styles.errorContainer}>
-            <View style={[
-                styles.errorTypeTag, 
-                errorType === 'java-io' ? styles.errorTypeTagJava : styles.errorTypeTagNetwork
-            ]}>
-              <Text style={styles.errorTypeText}>
-                {errorType === 'java-io' ? 'Connection Issue' : 'Network Error'}
-              </Text>
-            </View>
-            <Text style={styles.errorText}>{errorDetails || 'Unable to connect. Please check your network.'}</Text>
-            
-            {/* Troubleshooting Steps */}
-            {getTroubleshootingSteps(errorType ?? undefined).map((step, index) => (
-              <Text key={index} style={styles.troubleshootingStep}>
-                {`\\u2022 ${step}`}
-              </Text>
-            ))}
-
-            {/* Advanced Troubleshooting Toggle */}
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>
+              {errorType === 'java-io' 
+                ? 'Java IO section error detected. Please check your connection and try again.'
+                : 'Network error. Please check your internet connection and try again.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={handleConnectionRetry}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
             {errorType === 'java-io' && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.advancedButton}
                 onPress={() => setShowAdvancedTroubleshooting(!showAdvancedTroubleshooting)}
               >
                 <Text style={styles.advancedButtonText}>
-                  {showAdvancedTroubleshooting ? 'Hide' : 'Show'} Advanced Details
+                  {showAdvancedTroubleshooting ? 'Hide' : 'Show'} Advanced Troubleshooting
                 </Text>
               </TouchableOpacity>
             )}
-
-            {/* Advanced Troubleshooting Details */}
             {showAdvancedTroubleshooting && errorType === 'java-io' && (
               <View style={styles.advancedDetailsContainer}>
                 <Text style={styles.advancedDetailsText}>
-                  Error Type: {errorType}\\n
-                  Details: {errorDetails}\\n
-                  Expo URL: {getDevServerUrl()}\\n
-                  Status URL: {getDevServerUrl().replace(/^exp:/, 'http:') + '/status'}
+                  1. Ensure your device is connected to the internet.
+                </Text>
+                <Text style={styles.advancedDetailsText}>
+                  2. Restart the app.
+                </Text>
+                <Text style={styles.advancedDetailsText}>
+                  3. If the problem persists, contact support.
                 </Text>
               </View>
             )}
-            
-            <TouchableOpacity style={styles.retryButton} onPress={handleNetworkErrorRetry}>
-              <Text style={styles.retryButtonText}>Retry Connection</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.updateButton} onPress={handleCheckForUpdates}>
-              <Text style={styles.updateButtonText}>Check for Updates</Text>
-            </TouchableOpacity>
-          </BlurView>
-        )}
-
-        {/* Hall List */}
-        {!loading && !networkError && halls.length > 0 && (
-          <FlatList
-            data={displayedHalls}
-            renderItem={renderHallItem}
-            keyExtractor={(item, index) => `${item.location}-${item.hallName}-${item.timeSlot}-${index}`}
-            onEndReached={loadMore}
-            onEndReachedThreshold={0.5}
-            ListFooterComponent={renderFooter}
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
-          />
-        )}
-
-        {/* No Halls Available Message */}
-        {!loading && !networkError && halls.length === 0 && (
-          <View style={[styles.centered, styles.noHallsContainer]}>
-            <Text style={styles.noHallsText}>No halls available for selected date</Text>
-            <Text style={styles.tipText}>Try selecting a different date</Text>
           </View>
         )}
+
+        {/* Halls List */}
+        {!loading && displayedHalls.length === 0 && (
+          <View style={styles.noHallsContainer}>
+            <Text style={styles.noHallsText}>No halls found for the selected date.</Text>
+            <Text style={styles.tipText}>Tip: Try selecting a different date.</Text>
+          </View>
+        )}
+        <FlatList
+          data={displayedHalls}
+          renderItem={renderHallItem}
+          keyExtractor={(item, index) => item.hallName + index}
+          contentContainerStyle={styles.listContent}
+          style={styles.list}
+          ListFooterComponent={renderFooter}
+          showsVerticalScrollIndicator={false}
+        />
       </View>
     </SafeAreaView>
   );
@@ -689,353 +654,354 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f0f0f0', 
+    backgroundColor: '#000000', // Pure black background
   },
   container: {
     flex: 1,
-    padding: Platform.OS === 'ios' ? 20 : 15, 
-    backgroundColor: '#f0f0f0', 
+    padding: 20,
+    backgroundColor: '#000000',
   },
-  centered: { 
-    flex: 1, // Ensure it takes up space to center content
+  centered: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: { 
-    marginTop: 10,
-    fontSize: 16,
-    color: '#555', // General loading text color
+  // --- Start of changes for header ---
+  header: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 20,
+    paddingHorizontal: 20,
+    ...Platform.select({
+      android: {
+        marginTop: 60, // Additional top margin for Android
+      },
+      ios: {
+        marginTop: 20, // Keep existing margin for iOS
+      },
+    }),
   },
-  passwordContainer: { 
+  logo: {
+    width: 60,
+    height: 60,
+    marginBottom: 10,
+  },
+  heading: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#C6A556',
+    textAlign: 'center',
+  },
+  // --- End of changes for header ---
+  // --- Start of changes for dateSection ---
+  dateSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: 15,
+    marginVertical: 20,
+    height: 80, // Added fixed height
+  },
+  dateTextContainer: {
+    flex: 4, // Increased flex ratio
+    justifyContent: 'center',
+    width: '70%', // Added explicit width
+  },
+  dateLabel: {
+    color: '#C6A556',
+    fontSize: 18,
+    marginBottom: 8,
+  },
+  dateButton: {
+    height: 40, // Added fixed height
+    justifyContent: 'center',
+  },
+  dateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 24, // Increased font size
+    fontWeight: 'bold',
+  },
+  findButton: {
+    flex: 1,
+    minWidth: 90,
+    height: 45, // Added fixed height
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#D4AF37',
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10, // Added margin to separate from date
+  },
+  findButtonText: {
+    fontSize: 14, // Ensured smaller font size for alignment
+    color: '#000',
+    textAlign: 'center',
+  },
+  // --- End of changes for dateSection ---
+  modalContainerIOS: {
+    flex: 1,
+    justifyContent: 'flex-end', // Position modal at the bottom
+    backgroundColor: 'rgba(0,0,0,0.5)', // Semi-transparent background
+  },
+  modalContentIOS: {
+    backgroundColor: '#2C2C2E', // Dark background for modal content
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+  },
+  pickerHeaderIOS: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#4A4A4C', // Subtle border
+  },
+  modalButtonIOS: {
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+  },
+  modalButtonConfirmIOS: {
+    // No specific style needed here if default is fine, or adjust as necessary
+    // fontWeight: 'bold', // fontWeight can be 'normal', 'bold', '100'-'900'
+    // Let's try '600' which is a common semi-bold weight
+    // fontWeight: '600', // This property is for Text styles, not View styles. Removing to fix type error.
+  },
+  modalButtonTextIOS: {
+    fontSize: 17,
+    color: '#007AFF', // iOS blue for button text
+  },
+  datePickerIOS: {
+    // Ensure the picker itself doesn't cause layout issues
+    // backgroundColor: 'transparent', // Or match modalContentIOS background
+    // No explicit width/height needed, let it size naturally
+  },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#E0E0E0', // Light text for loading
+    fontSize: 16,
+  },
+  errorContainer: {
+    margin: 20,
+    padding: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(50, 50, 50, 0.9)', // Darker, slightly transparent background
+    alignItems: 'center',
+    overflow: 'hidden', // For BlurView border radius on Android
+  },
+  errorTypeTag: {
+    position: 'absolute',
+    top: -1, // Slight overlap for visual effect
+    left: -1,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderTopLeftRadius: 10,
+    borderBottomRightRadius: 10, // Stylish corner
+  },
+  errorTypeTagNetwork: {
+    backgroundColor: '#D32F2F', // Red for network errors
+  },
+  errorTypeTagJava: {
+    backgroundColor: '#FFA000', // Amber for Java IO issues
+  },
+  errorTypeText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#FFCDD2', // Light red for error text
+    textAlign: 'center',
+    marginBottom: 15,
+    marginTop: 30, // Space below the tag
+  },
+  troubleshootingStep: {
+    fontSize: 14,
+    color: '#B0BEC5', // Lighter grey for steps
+    textAlign: 'left',
+    alignSelf: 'stretch', // Make text take full width
+    marginLeft: 20, // Indent steps
+    marginBottom: 5,
+  },
+  advancedButton: {
+    marginTop: 15,
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 5,
+    backgroundColor: '#4CAF50', // Green for advanced button
+  },
+  advancedButtonText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  advancedDetailsContainer: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: 'rgba(0,0,0,0.2)', // Darker background for details
+    borderRadius: 5,
+    alignSelf: 'stretch',
+  },
+  advancedDetailsText: {
+    fontSize: 12,
+    color: '#CFD8DC', // Even lighter grey for details
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', // Monospace for details
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: '#007AFF', // Blue for retry
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  updateButton: {
+    marginTop: 10,
+    backgroundColor: '#555', // Grey for update button
+    paddingVertical: 10,
+    paddingHorizontal: 25,
+    borderRadius: 8,
+  },
+  updateButtonText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  list: {
+    marginTop: 10,
+  },
+  listContent: {
+    paddingBottom: 20, // Space at the bottom of the list
+  },
+  sectionHeader: {
+    backgroundColor: '#2C2C2E', // Dark background for section headers
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    marginTop: 15,
+    marginBottom: 5,
+    borderRadius: 8,
+  },
+  sectionHeaderText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#E0E0E0', // Light text for section headers
+  },
+  hallItem: {
+    backgroundColor: '#1E1E1E', // Slightly lighter dark for hall items
+    padding: 15,
+    marginVertical: 5,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  hallName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#D0D0D0', // Slightly lighter text for hall names
+    marginBottom: 10,
+  },
+  slotsContainer: {
+    flexDirection: 'row', // Keep slots horizontal
+    justifyContent: 'space-around', // Distribute space evenly
+    marginTop: 8,
+    gap: 10, // Add gap between morning and evening slots
+  },
+  timeSlotBadge: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 15, // More rounded badges
+    minWidth: 120, // Ensure badges have enough width
+    alignItems: 'center',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+  },
+  timeSlotText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#121212', // Dark text for slot type (Morning/Evening)
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#333', // Slightly lighter dark text for status
+    marginTop: 3,
+  },
+  availableBadge: {
+    backgroundColor: '#A5D6A7', // Subtle green (pastel green)
+  },
+  bookedBadge: {
+    backgroundColor: '#EF9A9A', // Subtle red (pastel red)
+  },
+  footerLoader: {
+    paddingVertical: 20,
+  },
+  noHallsContainer: {
+    paddingVertical: 30,
+  },
+  noHallsText: {
+    fontSize: 18,
+    color: '#757575', // Grey text for no halls message
+    marginBottom: 5,
+  },
+  tipText: {
+    fontSize: 14,
+    color: '#505050', // Darker grey for tip
+  },
+  passwordContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   passwordTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 30,
-    textAlign: 'center',
+    marginBottom: 20,
   },
   passwordInput: {
     width: '100%',
-    height: 50,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    fontSize: 16,
     color: '#fff',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  passwordError: {
+    color: '#FFCDD2', // Light red for error
+    marginBottom: 10,
   },
   passwordButton: {
-    backgroundColor: '#007AFF', 
-    paddingVertical: 15,
+    backgroundColor: '#007AFF', // Blue button
+    paddingVertical: 12,
     paddingHorizontal: 30,
-    borderRadius: 10,
-    elevation: 3, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    borderRadius: 8,
   },
   passwordButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  passwordError: {
-    color: '#ff3b30', 
-    fontSize: 14,
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  title: {
-    fontSize: Platform.OS === 'ios' ? 28 : 26, 
-    fontWeight: '700', 
-    color: '#1C1C1E', 
-    textAlign: 'center',
-    marginVertical: 20, 
-  },
-  dateContainer: { 
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 5,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  dateWrapper: { 
-    flexDirection: 'column',
-  },
-  dateLabel: { 
-    fontSize: 14,
-    color: '#8A8A8E', 
-    marginBottom: 5,
-  },
-  dateButton: { 
-    backgroundColor: 'transparent', 
-  },
-  dateButtonText: { 
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#007AFF', 
-  },
-  findButton: {
-    backgroundColor: '#007AFF', 
-    paddingVertical: 12,
-    paddingHorizontal: 25,
-    borderRadius: 10, 
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#007AFF',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  findButtonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  loaderContainer: { 
-    flex: 1, // Takes up available space to center content
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorContainer: {
-    margin: 15,
-    padding: 15,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)', 
-    alignItems: 'center', 
-    overflow: 'hidden', 
-  },
-  errorTypeTag: { 
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 15,
-    marginBottom: 10,
-    alignSelf: 'flex-start', 
-  },
-  errorTypeTagNetwork: { 
-    backgroundColor: '#FF9500', 
-  },
-  errorTypeTagJava: { 
-    backgroundColor: '#FF3B30', 
-  },
-  errorTypeText: { 
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 12,
-  },
-  errorText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#D70015', 
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  errorSubText: { 
-    fontSize: 14,
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  troubleshootingStep: { 
-    fontSize: 15,
-    color: '#3C3C43',
-    textAlign: 'left',
-    lineHeight: 22,
-    marginBottom: 8,
-    width: '100%',
-  },
-  advancedButton: { 
-    marginTop: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    backgroundColor: '#E5E5EA', 
-    borderRadius: 8,
-  },
-  advancedButtonText: { 
-    color: '#007AFF', 
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  advancedDetailsContainer: { 
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: '#F0F0F7', 
-    borderRadius: 8,
-    width: '100%',
-  },
-  advancedDetailsText: { 
-    fontSize: 13,
-    color: '#555',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', 
-  },
-  retryButton: {
-    backgroundColor: '#34C759', 
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 10,
-    marginTop: 15, 
-    shadowColor: '#34C759',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  updateButton: {
-    backgroundColor: '#5856D6', 
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 10,
-    marginTop: 10,
-    shadowColor: '#5856D6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  updateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  list: { 
-    flex: 1,
-  },
-  listContent: { 
-    paddingBottom: 20, 
-  },
-  sectionHeader: {
-    backgroundColor: '#E5E5EA', 
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    marginTop: 15, 
-    marginBottom: 5,
-    borderRadius: 8,
-  },
-  sectionHeaderText: {
-    fontSize: 18, 
-    fontWeight: '600', 
-    color: '#3C3C43', 
-  },
-  hallItem: {
-    backgroundColor: '#FFFFFF', 
-    padding: 15,
-    borderRadius: 12, 
-    marginBottom: 12, 
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08, 
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  hallName: {
-    fontSize: 20, 
-    fontWeight: '600', 
-    color: '#1C1C1E',
-    marginBottom: 10, 
-  },
-  slotsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around', 
-  },
-  timeSlotBadge: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8, 
-    alignItems: 'center',
-    minWidth: 120, 
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  availableBadge: {
-    backgroundColor: '#E0F8E9', 
-  },
-  bookedBadge: {
-    backgroundColor: '#FFEBEE', 
-  },
-  timeSlotText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1C1C1E', // Darker text for better contrast on light badges
-    marginBottom: 3,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  // iOS Specific Date Picker Modal Styles
-  modalContainerIOS: {
-    flex: 1,
-    justifyContent: 'flex-end', // Appears from bottom
-    backgroundColor: 'rgba(0,0,0,0.4)', // Dimmed background
-  },
-  modalContentIOS: {
-    backgroundColor: '#FFFFFF', // White background for the picker
-    borderTopLeftRadius: 20, // Rounded corners
-    borderTopRightRadius: 20,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 10, // Safe area padding for bottom
-  },
-  pickerHeaderIOS: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA', // Light separator line
-  },
-  modalButtonIOS: {
-    padding: 5,
-  },
-  modalButtonTextIOS: {
-    fontSize: 17,
-    color: '#007AFF', // Standard iOS blue
-  },
-  modalButtonConfirmIOS: {
-    fontWeight: '600', // Bold for "Done"
-  },
-  datePickerIOS: {
-    height: 200, // Adjust height as needed
-    width: '100%', // Full width
-  },
-  footerLoader: {
-    paddingVertical: 20,
-  },
-  noHallsContainer: { // Added to ensure "No halls" message is also centered
-     // styles.centered already has flex:1, justifyContent and alignItems
-  },
-  noHallsText: {
-    fontSize: 18,
-    color: '#8A8A8E',
-    marginBottom: 8,
-  },
-  tipText: {
-    fontSize: 15,
-    color: '#C7C7CD',
   },
 });
