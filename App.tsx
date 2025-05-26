@@ -491,74 +491,81 @@ export default function App() {
 
   if (isCheckingAuth) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>Checking authentication...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={{ flex: 1, backgroundColor: '#000000' }}>
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar barStyle="light-content" backgroundColor="#000000" />
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.loadingText}>Checking authentication...</Text>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.passwordContainer}>
-          <Image source={require('./assets/icon.png')} style={styles.passwordLogo} resizeMode="contain" />
-          <Text style={styles.passwordBrandName}>GMK Banquets</Text>
-          {/* <Text style={styles.passwordTitle}>Enter Password</Text> // Removed as per request */}
-          {authError ? <Text style={styles.passwordError}>{authError}</Text> : null}
-          <TextInput
-            style={styles.passwordInput}
-            placeholder="Enter Password" // Changed placeholder
-            placeholderTextColor="#757575" // Grey placeholder for TextInput component prop
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-          <TouchableOpacity
-            style={styles.passwordButton}
-            onPress={async () => {
-              setLoading(true);
-              setAuthError('');
-              try {
-                // Simulate password check
-                await new Promise((resolve, reject) => {
-                  setTimeout(() => {
-                    if (password === AUTH_PASSWORD) {
-                      resolve(true);
-                    } else {
-                      reject(new Error('Invalid password, please try again.'));
-                    }
-                  }, 1000);
-                });
-                
-                // If successful, store auth status and reload app
-                await AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true');
-                setIsAuthenticated(true);
-              } catch (e) { // Changed variable name to avoid conflict if 'error' is defined elsewhere
-                if (e instanceof Error) {
-                  setAuthError(e.message);
-                } else {
-                  setAuthError('An unknown error occurred during authentication.');
+      <View style={{ flex: 1, backgroundColor: '#000000' }}>
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar barStyle="light-content" backgroundColor="#000000" />
+          <View style={styles.passwordContainer}>
+            <Image source={require('./assets/icon.png')} style={styles.passwordLogo} resizeMode="contain" />
+            <Text style={styles.passwordBrandName}>GMK Banquets</Text>
+            {/* <Text style={styles.passwordTitle}>Enter Password</Text> // Removed as per request */}
+            {authError ? <Text style={styles.passwordError}>{authError}</Text> : null}
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Enter Password" // Changed placeholder
+              placeholderTextColor="#757575" // Grey placeholder for TextInput component prop
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity
+              style={styles.passwordButton}
+              onPress={async () => {
+                setLoading(true);
+                setAuthError('');
+                try {
+                  // Simulate password check
+                  await new Promise((resolve, reject) => {
+                    setTimeout(() => {
+                      if (password === AUTH_PASSWORD) {
+                        resolve(true);
+                      } else {
+                        reject(new Error('Invalid password, please try again.'));
+                      }
+                    }, 1000);
+                  });
+                  
+                  // If successful, store auth status and reload app
+                  await AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true');
+                  setIsAuthenticated(true);
+                } catch (e) { // Changed variable name to avoid conflict if 'error' is defined elsewhere
+                  if (e instanceof Error) {
+                    setAuthError(e.message);
+                  } else {
+                    setAuthError('An unknown error occurred during authentication.');
+                  }
+                } finally {
+                  setLoading(false);
                 }
-              } finally {
-                setLoading(false);
-              }
-            }}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.passwordButtonText}>Unlock</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+              }}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.passwordButtonText}>Unlock</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View> // Closing tag for the new View
     );
   }
 
+  // Main app content
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
