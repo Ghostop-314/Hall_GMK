@@ -11,7 +11,8 @@ import {
   FlatList,
   Alert,
   Linking,
-  TextInput // Added TextInput
+  TextInput, // Added TextInput
+  StatusBar // Added StatusBar
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage'; // Added AsyncStorage
@@ -317,39 +318,40 @@ export default function App() {
 
     const organizedData: HallData[] = [];
     const locationGroups = hallData.reduce((groups: { [key: string]: any }, hall) => {
-      if (!groups[hall.location]) {
-        groups[hall.location] = {};
+      const upperCaseLocation = hall.location.toUpperCase(); // Convert to uppercase
+      if (!groups[upperCaseLocation]) {
+        groups[upperCaseLocation] = {};
       }
-      if (!groups[hall.location][hall.hallName]) {
-        groups[hall.location][hall.hallName] = { Morning: null, Evening: null };
+      if (!groups[upperCaseLocation][hall.hallName]) {
+        groups[upperCaseLocation][hall.hallName] = { Morning: null, Evening: null };
       }
-      groups[hall.location][hall.hallName][hall.timeSlot] = hall.status;
+      groups[upperCaseLocation][hall.hallName][hall.timeSlot] = hall.status;
       return groups;
     }, {});
 
     console.log('Grouped location data:', JSON.stringify(locationGroups, null, 2)); // Debug: log grouped data in detail
 
-    const locationOrder: Array<'GMK Banquets Tathawade' | 'GMK Banquets Ravet'> = [
-      'GMK Banquets Tathawade',
-      'GMK Banquets Ravet'
+    const locationOrder: Array<'GMK BANQUETS TATHAWADE' | 'GMK BANQUETS RAVET'> = [
+      'GMK BANQUETS TATHAWADE',
+      'GMK BANQUETS RAVET'
     ];
 
     const hallOrder: {
-      'GMK Banquets Tathawade': string[];
-      'GMK Banquets Ravet': string[];
+      'GMK BANQUETS TATHAWADE': string[];
+      'GMK BANQUETS RAVET': string[];
     } = {
-      'GMK Banquets Tathawade': ['Aster', 'Grand', 'Tulip', 'Lotus'],
-      'GMK Banquets Ravet': ['Agastya', 'Vyas', 'Lawn']
+      'GMK BANQUETS TATHAWADE': ['Aster', 'Grand', 'Tulip', 'Lotus'],
+      'GMK BANQUETS RAVET': ['Agastya', 'Vyas', 'Lawn']
     };
 
     locationOrder.forEach(location => {
       if (locationGroups[location]) {
         organizedData.push({
           date: formatDate(date),
-          location: location as 'GMK Banquets Tathawade' | 'GMK Banquets Ravet',
+          location: location as 'GMK BANQUETS TATHAWADE' | 'GMK BANQUETS RAVET',
           hallName: '',
           timeSlot: 'Morning',
-          status: 'Available'
+          status: 'Available' // This is a placeholder for the section header, status doesn't matter
         });
 
         hallOrder[location].forEach((hallName: string) => {
@@ -357,14 +359,14 @@ export default function App() {
             const slots = locationGroups[location][hallName];
             organizedData.push({
               date: formatDate(date),
-              location: location as 'GMK Banquets Tathawade' | 'GMK Banquets Ravet',
+              location: location as 'GMK BANQUETS TATHAWADE' | 'GMK BANQUETS RAVET',
               hallName,
               timeSlot: 'Morning',
               status: slots.Morning || 'Booked'
             });
             organizedData.push({
               date: formatDate(date),
-              location: location as 'GMK Banquets Tathawade' | 'GMK Banquets Ravet',
+              location: location as 'GMK BANQUETS TATHAWADE' | 'GMK BANQUETS RAVET',
               hallName,
               timeSlot: 'Evening',
               status: slots.Evening || 'Booked'
@@ -557,6 +559,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <View style={styles.container}>
         <View style={styles.header}>
           <Image source={require('./assets/icon.png')} style={styles.logo} resizeMode="contain" />
@@ -574,7 +577,7 @@ export default function App() {
               }}
             >
               <Text style={styles.dateButtonText}>
-                {debugDate} {/* Display debugDate here */}
+                {formatDate(date)} {/* Display debugDate here */}
               </Text>
             </TouchableOpacity>
           </View>
@@ -666,12 +669,12 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#000000', // Pure black background
+    backgroundColor: '#000000', // Ensure this is black
   },
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#000000',
+    padding: 20, // Keep overall padding
+    backgroundColor: '#000000', // Ensure this is black
   },
   centered: {
     flex: 1,
@@ -682,14 +685,14 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 20,
+    // marginVertical: 20, // Reduced from 20
     paddingHorizontal: 20,
     ...Platform.select({
       android: {
-        marginTop: 60, // Additional top margin for Android
+        marginTop: 25, // Further reduced from 40
       },
       ios: {
-        marginTop: 20, // Keep existing margin for iOS
+        marginTop: 5, // Further reduced from 10
       },
     }),
   },
@@ -713,8 +716,8 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
     paddingHorizontal: 15,
-    marginVertical: 20,
-    height: 80, // Added fixed height
+    marginVertical: 8, // Further reduced from 10
+    height: 80, 
   },
   dateTextContainer: {
     flex: 4, // Increased flex ratio
@@ -901,17 +904,26 @@ const styles = StyleSheet.create({
     paddingBottom: 20, // Space at the bottom of the list
   },
   sectionHeader: {
-    backgroundColor: '#2C2C2E', // Dark background for section headers
-    paddingVertical: 10,
+    backgroundColor: '#1C1C1E', // Darker background
+    paddingVertical: 12,
     paddingHorizontal: 15,
     marginTop: 15,
     marginBottom: 5,
-    borderRadius: 8,
+    borderRadius: 12,
+    shadowColor: '#C6A556', // Golden glow
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4, // Android shadow
   },
   sectionHeaderText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#E0E0E0', // Light text for section headers
+    color: '#C6A556', // Golden color
+    textAlign: 'center', // Center alignment
+    textShadowColor: 'rgba(198, 165, 86, 0.3)', // Subtle golden glow
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
   hallItem: {
     backgroundColor: '#1E1E1E', // Slightly lighter dark for hall items

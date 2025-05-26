@@ -1,6 +1,6 @@
 export interface HallData {
     date: string;
-    location: 'GMK Banquets Tathawade' | 'Madhura Banquet' | 'GMK Banquets Ravet';
+    location: 'GMK BANQUETS TATHAWADE' | 'MADHURA BANQUET' | 'GMK BANQUETS RAVET'; // Changed to uppercase
     hallName: string;
     timeSlot: 'Morning' | 'Evening';
     status: 'Available' | 'Booked';
