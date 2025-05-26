@@ -14,7 +14,6 @@ import {
   TextInput // Added TextInput
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import DatePicker from 'react-native-date-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage'; // Added AsyncStorage
 import { fetchHallData, formatDate } from './src/services/api';
 import { HallData } from './src/types';
@@ -57,7 +56,6 @@ export default function App() {
   const [errorDetails, setErrorDetails] = useState<string>('');
   const [showAdvancedTroubleshooting, setShowAdvancedTroubleshooting] = useState(false);
   const [debugDate, setDebugDate] = useState(''); // Added for debugging
-  const [openModal, setOpenModal] = useState(false);
 
   // Check auth status on app load
   useEffect(() => {
@@ -260,11 +258,16 @@ export default function App() {
     }
   };
 
-  const handleDateChange = (selectedDate: Date) => {
+  const handleDateChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
-      setTempDate(selectedDate);
+      setShowDatePicker(false);
+      if (selectedDate) {
+        setDate(selectedDate);
+      }
     } else {
-      setTempDate(selectedDate);
+      if (selectedDate) {
+        setTempDate(selectedDate);
+      }
     }
   };
 
@@ -438,40 +441,49 @@ export default function App() {
   }, [halls]);
 
   const renderDatePicker = () => {
-    // Use modal for both platforms
-    return (
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showDatePicker}
-        onRequestClose={() => setShowDatePicker(false)}
-      >
+    if (Platform.OS === 'ios') {
+      return (
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={showDatePicker}
+          onRequestClose={() => setShowDatePicker(false)}
+        >
         <View style={styles.modalContainerIOS}>
           <View style={styles.modalContentIOS}>
             <View style={styles.pickerHeaderIOS}>
-              <TouchableOpacity
-                style={styles.modalButtonIOS}
-                onPress={() => setShowDatePicker(false)}
-              >
+              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={styles.modalButtonIOS}>
                 <Text style={styles.modalButtonTextIOS}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
+              <TouchableOpacity 
+                onPress={handleConfirmDate} 
                 style={[styles.modalButtonIOS, styles.modalButtonConfirmIOS]}
-                onPress={handleConfirmDate}
               >
                 <Text style={styles.modalButtonTextIOS}>Done</Text>
               </TouchableOpacity>
             </View>
-            <DatePicker
-              date={tempDate}
-              onDateChange={handleDateChange}
+            <DateTimePicker
+              value={tempDate}
               mode="date"
-              theme="dark" 
-              style={{width: 350, height: 200, backgroundColor: '#2C2C2E'}}
+              display="inline"
+              onChange={handleDateChange}
+              style={styles.datePickerIOS}
+              textColor="#fff" // White text for date picker
+              themeVariant="dark" // Dark mode for date picker
             />
           </View>
         </View>
       </Modal>
+      );
+    }
+    // Android DatePicker remains the same as it uses native UI
+    return showDatePicker && (
+      <DateTimePicker
+        value={date}
+        mode="date"
+        display="default"
+        onChange={handleDateChange}
+      />
     );
   };
 
