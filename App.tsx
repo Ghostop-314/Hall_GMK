@@ -504,12 +504,14 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.passwordContainer}>
-          <Text style={styles.passwordTitle}>Enter Password</Text>
+          <Image source={require('./assets/icon.png')} style={styles.passwordLogo} resizeMode="contain" />
+          <Text style={styles.passwordBrandName}>GMK Banquets</Text>
+          {/* <Text style={styles.passwordTitle}>Enter Password</Text> // Removed as per request */}
           {authError ? <Text style={styles.passwordError}>{authError}</Text> : null}
           <TextInput
             style={styles.passwordInput}
-            placeholder="Password"
-            placeholderTextColor="#B0BEC5"
+            placeholder="Enter Password" // Changed placeholder
+            placeholderTextColor="#757575" // Grey placeholder for TextInput component prop
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -981,6 +983,7 @@ const styles = StyleSheet.create({
   },
   noHallsContainer: {
     paddingVertical: 30,
+    alignItems: 'center', // Added to center content
   },
   noHallsText: {
     fontSize: 18,
@@ -995,36 +998,50 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 30, // Increased padding for more empty space
+    backgroundColor: '#000000',
   },
-  passwordTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 20,
+  passwordLogo: {
+    width: 90, // Slightly larger logo
+    height: 90,
+    marginBottom: 15, // Adjusted margin
   },
+  passwordBrandName: {
+    fontSize: 28, // Slightly larger brand name
+    fontWeight: '600', // Semi-bold for a more refined look
+    color: '#C6A556',
+    marginBottom: 40, // Increased margin for more separation
+  },
+  // passwordTitle style removed as the Text element is removed
   passwordInput: {
     width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    color: '#fff',
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginBottom: 15,
-    fontSize: 16,
+    backgroundColor: '#1A1A1A', // Slightly darker input background
+    color: '#FFFFFF',
+    paddingHorizontal: 20, // Increased horizontal padding
+    paddingVertical: 18, // Increased vertical padding
+    borderRadius: 12, // More rounded corners
+    marginBottom: 25, // Adjusted margin
+    fontSize: 17, // Standard iOS text size
+    borderColor: '#C6A556',
+    borderWidth: 1,
+    textAlign: 'center', // Center placeholder text
   },
   passwordError: {
-    color: '#FFCDD2', // Light red for error
-    marginBottom: 10,
+    color: '#EF9A9A',
+    marginBottom: 20, // Adjusted margin
+    textAlign: 'center',
+    fontSize: 14, // Slightly smaller error text
   },
   passwordButton: {
-    backgroundColor: '#007AFF', // Blue button
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 8,
+    backgroundColor: '#D4AF37',
+    paddingVertical: 18, // Increased vertical padding
+    paddingHorizontal: 40, // Increased horizontal padding
+    borderRadius: 12, // Consistent with input field
+    width: '100%', // Make button full width
+    alignItems: 'center', // Center text in button
   },
   passwordButtonText: {
-    color: '#fff',
+    color: '#000000', // Black text
     fontSize: 16,
     fontWeight: 'bold',
   },
