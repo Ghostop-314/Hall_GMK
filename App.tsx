@@ -30,6 +30,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient'; // Import LinearGradient
 import { BlurView } from 'expo-blur'; // Import BlurView for iOS-like frosted glass
 import { Image } from 'react-native'; // Ensure correct import for React Native Image component
+import SkeletonItem from './src/components/SkeletonItem';
 
 // Initialize environment variables check
 const apiKey = process.env.EXPO_PUBLIC_GOOGLE_SHEETS_API_KEY;
@@ -46,7 +47,8 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [date, setDate] = useState(new Date());
-  const [tempDate, setTempDate] = useState(new Date());  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [halls, setHalls] = useState<HallData[]>([]);
   const [displayedHalls, setDisplayedHalls] = useState<HallData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -104,9 +106,9 @@ export default function App() {
             Alert.alert(
               'Development Server Notice',
               `The app is having trouble connecting to the development server. If you see errors, use the retry button.
-              
-              Status endpoint: ${statusUrl}
-              Expo URL: ${getDevServerUrl()}`,
+
+Status endpoint: ${statusUrl}
+Expo URL: ${getDevServerUrl()}`,
               [{ text: 'OK' }]
             );
           }
@@ -152,12 +154,14 @@ export default function App() {
         clearInterval(connectionCheckInterval);
       }
     };
-  }, [networkError]);
+  }, [networkError, date]); // Added date to dependency array for setDebugDate
 
   // Function to handle connection retries
   const handleConnectionRetry = async () => {
     setNetworkError(false);
     setLoading(true);
+    setDisplayedHalls([]); // Clear previous results to show skeleton
+    setHalls([]);          // Clear all hall data
     setErrorType(null);
     setErrorDetails('');
     
@@ -182,10 +186,10 @@ export default function App() {
           Alert.alert(
             'Development Server Connection Failed',
             `Make sure your device and development computer are on the same network.
-            
-            Status endpoint: ${statusUrlRetry}
-            Expo URL: ${getDevServerUrl()}
-            Try restarting the server with "npm start --clear"`,
+
+Status endpoint: ${statusUrlRetry}
+Expo URL: ${getDevServerUrl()}
+Try restarting the server with "npm start --clear"`,
             [{ text: 'OK' }]
           );
         } else {
@@ -231,27 +235,36 @@ export default function App() {
       setLoading(true);
       const result = await checkForUpdatesAndReload();
       
-      if (!result) {
+      if (!result && __DEV__) { // Only show "Update Check Failed" in DEV if it actually fails
         Alert.alert(
+          'Update Check Failed (Dev)',
+          'Unable to check for updates. This might be normal in dev if not connected to update server.',
+          [{ text: 'OK' }]
+        );
+      } else if (!result && !__DEV__) { // In Prod, a failed check is an issue
+         Alert.alert(
           'Update Check Failed',
           'Unable to check for updates. Please try again later.',
           [{ text: 'OK' }]
         );
-      } else if (!__DEV__) {
-        Alert.alert(
-          'No Updates Available',
+      } else if (result && !__DEV__){ // If check was successful (result=true) and in prod
+         Alert.alert(
+          'No Updates Available', // Or "App is up to date" if checkForUpdatesAndReload can distinguish
           'You are already using the latest version of the app.',
+          [{ text: 'OK' }]
+        );
+      } else if (result && __DEV__){
+         Alert.alert(
+          'Update Check (Dev)',
+          'Update check completed. In development, updates are usually handled by Metro bundler. If an OTA update was found, it would have been applied.',
           [{ text: 'OK' }]
         );
       }
     } catch (error) {
       console.error('Error checking for updates:', error);
-      
-      // Log the error for analytics
-      const errorType = logErrorForAnalytics(error, 'handleCheckForUpdates');
-      
-      setNetworkError(true);
-      setErrorType(errorType);
+      const errorTypeLog = logErrorForAnalytics(error, 'handleCheckForUpdates');
+      setNetworkError(true); // Consider if this should set networkError or a specific updateError state
+      setErrorType(errorTypeLog); // Or 'update'
       setErrorDetails('Error checking for updates: ' + 
         (error instanceof Error ? error.message : String(error)));
     } finally {
@@ -265,20 +278,22 @@ export default function App() {
       if (selectedDate) {
         setDate(selectedDate);
       }
-    } else {
+    } else { // iOS
       if (selectedDate) {
-        setTempDate(selectedDate);
+        setTempDate(selectedDate); // Store in tempDate for iOS
       }
     }
   };
 
-  const handleConfirmDate = () => {
+  const handleConfirmDate = () => { // For iOS
     setDate(tempDate);
     setShowDatePicker(false);
   };
 
   const handleFind = async () => {
     setLoading(true);
+    setDisplayedHalls([]); 
+    setHalls([]);          
     setPage(1);
     setNetworkError(false);
     setErrorType(null);
@@ -293,17 +308,16 @@ export default function App() {
         console.log(`Successfully fetched ${hallData.length} hall records`);
         processHallData(hallData);
       } else {
-        console.log('Fetch returned empty results');
-        setNetworkError(true);
-        setErrorType('network');
-        setErrorDetails('No data available for the selected date.');
+        console.log('Fetch returned empty results for the selected date.');
+        // setNetworkError(true); // Don't set network error for empty data, it's a valid response
+        // setErrorType('network');
+        // setErrorDetails('No data available for the selected date.');
+        setHalls([]); // Ensure halls are empty
+        setDisplayedHalls([]); // Ensure displayedHalls are empty
       }
     } catch (error) {
       console.error('Error fetching hall data:', error);
-      
-      // Log the error for analytics and detect the type
       const detectedErrorType = logErrorForAnalytics(error, 'handleFind');
-      
       setNetworkError(true);
       setErrorType(detectedErrorType);
       setErrorDetails(error instanceof Error ? error.message : String(error));
@@ -312,24 +326,27 @@ export default function App() {
     }
   };
   
-  // Process hall data after fetching
   const processHallData = (hallData: HallData[]) => {
-    console.log('Received hallData:', JSON.stringify(hallData, null, 2)); // Debug: log the actual data in detail
+    // console.log('Received hallData for processing:', JSON.stringify(hallData, null, 2));
 
     const organizedData: HallData[] = [];
-    const locationGroups = hallData.reduce((groups: { [key: string]: any }, hall) => {
-      const upperCaseLocation = hall.location.toUpperCase(); // Convert to uppercase
-      if (!groups[upperCaseLocation]) {
-        groups[upperCaseLocation] = {};
-      }
-      if (!groups[upperCaseLocation][hall.hallName]) {
-        groups[upperCaseLocation][hall.hallName] = { Morning: null, Evening: null };
-      }
-      groups[upperCaseLocation][hall.hallName][hall.timeSlot] = hall.status;
-      return groups;
-    }, {});
+    const locationGroups: { [key: string]: { [hallName: string]: { Morning?: 'Available' | 'Booked' | 'Enquiry', Evening?: 'Available' | 'Booked' | 'Enquiry' } } } = {};
 
-    console.log('Grouped location data:', JSON.stringify(locationGroups, null, 2)); // Debug: log grouped data in detail
+    hallData.forEach(hall => {
+      const upperCaseLocation = hall.location.toUpperCase();
+      if (!locationGroups[upperCaseLocation]) {
+        locationGroups[upperCaseLocation] = {};
+      }
+      if (!locationGroups[upperCaseLocation][hall.hallName]) {
+        locationGroups[upperCaseLocation][hall.hallName] = {};
+      }
+      // Ensure timeslot is one of the expected values
+      if (hall.timeSlot === 'Morning' || hall.timeSlot === 'Evening') {
+        locationGroups[upperCaseLocation][hall.hallName][hall.timeSlot] = hall.status;
+      }
+    });
+
+    // console.log('Grouped location data:', JSON.stringify(locationGroups, null, 2));
 
     const locationOrder: Array<'GMK BANQUETS TATHAWADE' | 'GMK BANQUETS RAVET'> = [
       'GMK BANQUETS TATHAWADE',
@@ -345,57 +362,66 @@ export default function App() {
     };
 
     locationOrder.forEach(location => {
-      if (locationGroups[location]) {
+      const normalizedLocationKey = location.toUpperCase(); // Use consistent casing for lookup
+      if (locationGroups[normalizedLocationKey] && Object.keys(locationGroups[normalizedLocationKey]).length > 0) {
         organizedData.push({
-          date: formatDate(date),
-          location: location as 'GMK BANQUETS TATHAWADE' | 'GMK BANQUETS RAVET',
-          hallName: '',
-          timeSlot: 'Morning',
-          status: 'Available' // This is a placeholder for the section header, status doesn't matter
+          date: formatDate(date), // This date is from the state, consistent for all items in this fetch
+          location: location, // Use original casing for display
+          hallName: '', // Indicates a section header
+          timeSlot: 'Morning', // Placeholder
+          status: 'Available'  // Placeholder
         });
 
         hallOrder[location].forEach((hallName: string) => {
-          if (locationGroups[location][hallName]) {
-            const slots = locationGroups[location][hallName];
+          if (locationGroups[normalizedLocationKey][hallName]) {
+            const slots = locationGroups[normalizedLocationKey][hallName];
             organizedData.push({
               date: formatDate(date),
-              location: location as 'GMK BANQUETS TATHAWADE' | 'GMK BANQUETS RAVET',
+              location: location,
               hallName,
               timeSlot: 'Morning',
-              status: slots.Morning || 'Booked'
+              status: slots.Morning || 'Enquiry' // Default to 'Enquiry' or similar if not explicitly booked/available
             });
             organizedData.push({
               date: formatDate(date),
-              location: location as 'GMK BANQUETS TATHAWADE' | 'GMK BANQUETS RAVET',
+              location: location,
               hallName,
               timeSlot: 'Evening',
-              status: slots.Evening || 'Booked'
+              status: slots.Evening || 'Enquiry'
             });
           } else {
-            console.warn(`Hall ${hallName} missing in location ${location}`); // Debug: warn about missing halls
+            // If a hall defined in hallOrder is not in the data, you might want to represent it as 'Not Available' or skip it.
+            // For now, we skip it, meaning only halls present in data are shown.
+            // console.warn(`Hall ${hallName} not found in data for location ${location}`);
           }
         });
       } else {
-        console.warn(`Location ${location} missing in data`); // Debug: warn about missing locations
+        // console.warn(`Location ${location} not found in data or has no halls.`);
       }
     });
-
+    
+    // console.log('Organized Data:', JSON.stringify(organizedData, null, 2));
     setHalls(organizedData);
     setDisplayedHalls(organizedData.slice(0, ITEMS_PER_PAGE));
-    setLoading(false);
   };
 
   const loadMore = useCallback(() => {
-    if (loadingMore) return;
-    if (displayedHalls.length >= halls.length) return;
+    if (loadingMore || displayedHalls.length >= halls.length) return;
 
     setLoadingMore(true);
     const nextPage = page + 1;
-    const startIndex = (nextPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const startIndex = page * ITEMS_PER_PAGE; // page is 1-indexed, so for page 1, start is 0. For page 2, start is ITEMS_PER_PAGE.
+                                            // This should be (page * ITEMS_PER_PAGE) if page starts at 0 for calculation
+                                            // Or if page is 1-indexed, then (page * ITEMS_PER_PAGE) is the start of next page's items
+                                            // Let's adjust: current page is `page`. We want items for `page+1`.
+                                            // Items for page `p` are from `(p-1)*ITEMS_PER_PAGE` to `p*ITEMS_PER_PAGE - 1`
     
-    setDisplayedHalls(prev => [...prev, ...halls.slice(startIndex, endIndex)]);
-    setPage(nextPage);
+    const newItems = halls.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    
+    if (newItems.length > 0) {
+      setDisplayedHalls(prev => [...prev, ...newItems]);
+      setPage(nextPage);
+    }
     setLoadingMore(false);
   }, [halls, page, loadingMore, displayedHalls.length]);
 
@@ -403,13 +429,13 @@ export default function App() {
     if (!loadingMore) return null;
     return (
       <View style={styles.footerLoader}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color="#C6A556" />
       </View>
     );
   };
 
   const renderHallItem = useCallback(({ item, index }: { item: HallData, index: number }) => {
-    if (item.hallName === '') {
+    if (item.hallName === '') { 
       return (
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionHeaderText}>{item.location}</Text>
@@ -418,29 +444,38 @@ export default function App() {
     }
 
     if (item.timeSlot === 'Morning') {
-      const eveningSlot = halls[index + 1];
-      if (!eveningSlot || eveningSlot.hallName !== item.hallName) {
-        console.warn("Evening slot missing or mismatched for hall:", item.hallName);
-        return null; 
+      const eveningSlotIndex = index + 1;
+      let eveningSlotStatus = 'Enquiry'; // Default if not found or mismatched
+
+      if (eveningSlotIndex < halls.length && 
+          halls[eveningSlotIndex].hallName === item.hallName && 
+          halls[eveningSlotIndex].timeSlot === 'Evening') {
+        eveningSlotStatus = halls[eveningSlotIndex].status;
+      } else {
+        // console.warn(`Evening slot for ${item.hallName} mismatched or not found directly after morning slot.`);
+        // Attempt to find it further if data isn't strictly paired (though current logic assumes pairs)
+        const foundEveningSlot = halls.find(h => h.hallName === item.hallName && h.location === item.location && h.timeSlot === 'Evening');
+        if (foundEveningSlot) eveningSlotStatus = foundEveningSlot.status;
       }
+      
       return (
         <View style={styles.hallItem}>
           <Text style={styles.hallName}>{item.hallName}</Text>
           <View style={styles.slotsContainer}>
-            <View style={[styles.timeSlotBadge, item.status === 'Available' ? styles.availableBadge : styles.bookedBadge]}>
+            <View style={[styles.timeSlotBadge, item.status === 'Available' ? styles.availableBadge : (item.status === 'Booked' ? styles.bookedBadge : styles.enquiryBadge)]}>
               <Text style={styles.timeSlotText}>Morning</Text>
               <Text style={styles.statusText}>{item.status}</Text>
             </View>
-            <View style={[styles.timeSlotBadge, eveningSlot.status === 'Available' ? styles.availableBadge : styles.bookedBadge]}>
+            <View style={[styles.timeSlotBadge, eveningSlotStatus === 'Available' ? styles.availableBadge : (eveningSlotStatus === 'Booked' ? styles.bookedBadge : styles.enquiryBadge)]}>
               <Text style={styles.timeSlotText}>Evening</Text>
-              <Text style={styles.statusText}>{eveningSlot.status}</Text>
+              <Text style={styles.statusText}>{eveningSlotStatus}</Text>
             </View>
           </View>
         </View>
       );
     }
-    return null;
-  }, [halls]);
+    return null; // Only render for "Morning" items, Evening is paired.
+  }, [halls, styles]); // styles dependency
 
   const renderDatePicker = () => {
     if (Platform.OS === 'ios') {
@@ -461,7 +496,7 @@ export default function App() {
                 onPress={handleConfirmDate} 
                 style={[styles.modalButtonIOS, styles.modalButtonConfirmIOS]}
               >
-                <Text style={styles.modalButtonTextIOS}>Done</Text>
+                <Text style={[styles.modalButtonTextIOS, {fontWeight: '600'}]}>Done</Text>
               </TouchableOpacity>
             </View>
             <DateTimePicker
@@ -470,20 +505,19 @@ export default function App() {
               display="inline"
               onChange={handleDateChange}
               style={styles.datePickerIOS}
-              textColor="#fff" // White text for date picker
-              themeVariant="dark" // Dark mode for date picker
+              textColor="#FFFFFF" 
+              themeVariant="dark" // Ensure this is supported or remove if causing issues
             />
           </View>
         </View>
       </Modal>
       );
     }
-    // Android DatePicker remains the same as it uses native UI
     return showDatePicker && (
       <DateTimePicker
         value={date}
         mode="date"
-        display="default"
+        display="default" // Or "calendar", "spinner"
         onChange={handleDateChange}
       />
     );
@@ -495,7 +529,7 @@ export default function App() {
         <SafeAreaView style={styles.safeArea}>
           <StatusBar barStyle="light-content" backgroundColor="#000000" />
           <View style={styles.centered}>
-            <ActivityIndicator size="large" color="#007AFF" />
+            <ActivityIndicator size="large" color="#C6A556" />
             <Text style={styles.loadingText}>Checking authentication...</Text>
           </View>
         </SafeAreaView>
@@ -511,61 +545,53 @@ export default function App() {
           <View style={styles.passwordContainer}>
             <Image source={require('./assets/icon.png')} style={styles.passwordLogo} resizeMode="contain" />
             <Text style={styles.passwordBrandName}>GMK Banquets</Text>
-            {/* <Text style={styles.passwordTitle}>Enter Password</Text> // Removed as per request */}
             {authError ? <Text style={styles.passwordError}>{authError}</Text> : null}
             <TextInput
               style={styles.passwordInput}
-              placeholder="Enter Password" // Changed placeholder
-              placeholderTextColor="#757575" // Grey placeholder for TextInput component prop
+              placeholder="Enter Password"
+              placeholderTextColor="#757575"
               secureTextEntry
               value={password}
               onChangeText={setPassword}
+              autoCapitalize="none"
             />
             <TouchableOpacity
               style={styles.passwordButton}
               onPress={async () => {
-                setLoading(true);
+                setLoading(true); 
                 setAuthError('');
                 try {
-                  // Simulate password check
-                  await new Promise((resolve, reject) => {
+                  await new Promise<void>((resolve, reject) => { // Explicitly type Promise
                     setTimeout(() => {
                       if (password === AUTH_PASSWORD) {
-                        resolve(true);
+                        resolve();
                       } else {
                         reject(new Error('Invalid password, please try again.'));
                       }
-                    }, 1000);
+                    }, 500); 
                   });
-                  
-                  // If successful, store auth status and reload app
                   await AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true');
                   setIsAuthenticated(true);
-                } catch (e) { // Changed variable name to avoid conflict if 'error' is defined elsewhere
-                  if (e instanceof Error) {
-                    setAuthError(e.message);
-                  } else {
-                    setAuthError('An unknown error occurred during authentication.');
-                  }
+                } catch (e: any) { 
+                  setAuthError(e.message || 'An unknown error occurred.');
                 } finally {
-                  setLoading(false);
+                  setLoading(false); 
                 }
               }}
-              disabled={loading}
+              disabled={loading} 
             >
-              {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
+              {loading ? ( 
+                <ActivityIndicator size="small" color="#000000" /> 
               ) : (
                 <Text style={styles.passwordButtonText}>Unlock</Text>
               )}
             </TouchableOpacity>
           </View>
         </SafeAreaView>
-      </View> // Closing tag for the new View
+      </View>
     );
   }
 
-  // Main app content
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
@@ -581,12 +607,12 @@ export default function App() {
             <TouchableOpacity
               style={styles.dateButton}
               onPress={() => {
-                setTempDate(date);
+                setTempDate(new Date(date)); // Ensure tempDate is a new instance based on current date
                 setShowDatePicker(true);
               }}
             >
               <Text style={styles.dateButtonText}>
-                {formatDate(date)} {/* Display debugDate here */}
+                {formatDate(date)}
               </Text>
             </TouchableOpacity>
           </View>
@@ -596,7 +622,7 @@ export default function App() {
             onPress={handleFind}
             disabled={loading}
           >
-            {loading ? (
+            {loading && displayedHalls.length === 0 ? ( 
               <ActivityIndicator size="small" color="#000000" />
             ) : (
               <Text style={styles.findButtonText}>Check</Text>
@@ -606,70 +632,103 @@ export default function App() {
         
         {renderDatePicker()}
 
-        {/* Loading State */}
-        {loading && (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Loading data, please wait...</Text>
-          </View>
+        {loading && !networkError && displayedHalls.length === 0 && (
+          <FlatList
+            data={Array.from({ length: 6 })} // Changed length to 6 to add one more skeleton item
+            renderItem={() => <SkeletonItem />}
+            keyExtractor={(item, index) => `skeleton-${index}`}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          />
         )}
 
-        {/* Network Error Display */}
         {networkError && (
           <View style={styles.errorContainer}>
+            {Platform.OS === 'ios' ? (
+              <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+            ) : (
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(30, 30, 30, 0.9)' }]} />
+            )}
+            <View style={[
+                styles.errorTypeTag,
+                errorType === 'java-io' ? styles.errorTypeTagJava : styles.errorTypeTagNetwork
+            ]}>
+                <Text style={styles.errorTypeText}>
+                    {errorType === 'java-io' ? 'Connection Issue' : (errorType === 'update' ? 'Update Error' : 'Network Error')}
+                </Text>
+            </View>
             <Text style={styles.errorText}>
-              {errorType === 'java-io' 
-                ? 'Java IO section error detected. Please check your connection and try again.'
-                : 'Network error. Please check your internet connection and try again.'}
+              {errorType === 'java-io'
+                ? getTroubleshootingSteps(errorType).join('\n') // Join array of strings
+                : errorDetails || 'An unexpected error occurred. Please try again.'}
             </Text>
             <TouchableOpacity
               style={styles.retryButton}
               onPress={handleConnectionRetry}
+              disabled={loading}
             >
-              <Text style={styles.retryButtonText}>Retry</Text>
+              {loading && errorType !== 'update' ? <ActivityIndicator color="#fff" /> : <Text style={styles.retryButtonText}>Retry</Text>}
             </TouchableOpacity>
+            
             {errorType === 'java-io' && (
               <TouchableOpacity
                 style={styles.advancedButton}
                 onPress={() => setShowAdvancedTroubleshooting(!showAdvancedTroubleshooting)}
               >
                 <Text style={styles.advancedButtonText}>
-                  {showAdvancedTroubleshooting ? 'Hide' : 'Show'} Advanced Troubleshooting
+                  {showAdvancedTroubleshooting ? 'Hide' : 'Show'} Troubleshooting
                 </Text>
               </TouchableOpacity>
             )}
             {showAdvancedTroubleshooting && errorType === 'java-io' && (
               <View style={styles.advancedDetailsContainer}>
-                <Text style={styles.advancedDetailsText}>
-                  1. Ensure your device is connected to the internet.
-                </Text>
-                <Text style={styles.advancedDetailsText}>
-                  2. Restart the app.
-                </Text>
-                <Text style={styles.advancedDetailsText}>
-                  3. If the problem persists, contact support.
-                </Text>
+                {getTroubleshootingSteps(errorType).map((step: string, idx: number) => ( // Add types for step and idx
+                  <Text key={idx} style={styles.advancedDetailsText}>{step}</Text>
+                ))}
+                {__DEV__ && (
+                  <TouchableOpacity onPress={() => {
+                    const url = getDevServerUrl();
+                    if (url) Linking.openURL(url.replace(/^exp:/, 'http:') + '/status');
+                    }}
+                  >
+                    <Text style={[styles.advancedDetailsText, { color: '#0A84FF', marginTop: 10 }]}>
+                      Check Dev Server Status
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
+            <TouchableOpacity
+                style={styles.updateButton}
+                onPress={handleCheckForUpdates}
+                disabled={loading}
+            >
+                {loading && errorType === 'update' ? <ActivityIndicator color="#fff" /> : <Text style={styles.updateButtonText}>Check for Updates</Text>}
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Halls List */}
-        {!loading && displayedHalls.length === 0 && (
+        {!loading && !networkError && displayedHalls.length > 0 && (
+          <FlatList
+            data={displayedHalls}
+            renderItem={renderHallItem}
+            keyExtractor={(item, index) => `${item.location}-${item.hallName}-${item.timeSlot}-${index}`} // Ensure unique keys
+            contentContainerStyle={styles.listContent}
+            style={styles.list}
+            ListFooterComponent={renderFooter}
+            showsVerticalScrollIndicator={false}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.5} 
+          />
+        )}
+        
+        {!loading && !networkError && halls.length === 0 && ( 
           <View style={styles.noHallsContainer}>
             <Text style={styles.noHallsText}>No halls found for the selected date.</Text>
             <Text style={styles.tipText}>Tip: Try selecting a different date.</Text>
           </View>
         )}
-        <FlatList
-          data={displayedHalls}
-          renderItem={renderHallItem}
-          keyExtractor={(item, index) => item.hallName + index}
-          contentContainerStyle={styles.listContent}
-          style={styles.list}
-          ListFooterComponent={renderFooter}
-          showsVerticalScrollIndicator={false}
-        />
       </View>
     </SafeAreaView>
   );
@@ -678,378 +737,362 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#000000', // Ensure this is black
+    backgroundColor: '#000000',
   },
   container: {
     flex: 1,
-    padding: 20, // Keep overall padding
-    backgroundColor: '#000000', // Ensure this is black
+    paddingHorizontal: 15, 
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 10, // Adjusted top padding
+    backgroundColor: '#000000',
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // --- Start of changes for header ---
   header: {
     alignItems: 'center',
-    justifyContent: 'center',
-    // marginVertical: 20, // Reduced from 20
-    paddingHorizontal: 20,
-    ...Platform.select({
-      android: {
-        marginTop: 25, // Further reduced from 40
-      },
-      ios: {
-        marginTop: 5, // Further reduced from 10
-      },
-    }),
+    paddingVertical: 10, 
+    marginBottom: 10, 
   },
   logo: {
-    width: 60,
-    height: 60,
-    marginBottom: 10,
+    width: 55, 
+    height: 55,
+    marginBottom: 8,
   },
   heading: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#C6A556',
+    fontSize: 26, 
+    fontWeight: 'bold', // Changed from 700
+    color: '#C6A556', 
     textAlign: 'center',
   },
-  // --- End of changes for header ---
-  // --- Start of changes for dateSection ---
   dateSection: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: '100%',
-    alignSelf: 'center',
-    paddingHorizontal: 15,
-    marginVertical: 8, // Further reduced from 10
-    height: 80, 
+    marginVertical: 12, 
+    paddingHorizontal: 5, 
   },
   dateTextContainer: {
-    flex: 4, // Increased flex ratio
-    justifyContent: 'center',
-    width: '70%', // Added explicit width
+    flex: 1, 
+    marginRight: 12, 
   },
   dateLabel: {
-    color: '#C6A556',
-    fontSize: 18,
-    marginBottom: 8,
+    color: '#A0A0A0', 
+    fontSize: 15, 
+    marginBottom: 5,
   },
   dateButton: {
-    height: 40, // Added fixed height
-    justifyContent: 'center',
+    paddingVertical: 8, 
   },
   dateButtonText: {
     color: '#FFFFFF',
-    fontSize: 24, // Increased font size
+    fontSize: 22, 
     fontWeight: 'bold',
   },
   findButton: {
-    flex: 1,
-    minWidth: 90,
-    height: 45, // Added fixed height
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: '#D4AF37',
-    borderRadius: 25,
+    minWidth: 85, 
+    height: 50, 
+    paddingHorizontal: 18, 
+    backgroundColor: '#D4AF37', 
+    borderRadius: 25, 
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 10, // Added margin to separate from date
+    shadowColor: '#D4AF37',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 6,
   },
   findButtonText: {
-    fontSize: 14, // Ensured smaller font size for alignment
-    color: '#000',
-    textAlign: 'center',
+    fontSize: 17,
+    color: '#000000', 
+    fontWeight: 'bold',
   },
-  // --- End of changes for dateSection ---
   modalContainerIOS: {
     flex: 1,
-    justifyContent: 'flex-end', // Position modal at the bottom
-    backgroundColor: 'rgba(0,0,0,0.5)', // Semi-transparent background
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.65)',
   },
   modalContentIOS: {
-    backgroundColor: '#2C2C2E', // Dark background for modal content
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
+    backgroundColor: '#1C1C1E', 
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingHorizontal: 20,
+    paddingTop: 12, 
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20, // Account for home indicator on iOS
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
   },
   pickerHeaderIOS: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#4A4A4C', // Subtle border
+    paddingVertical: 12, 
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#3A3A3C', 
   },
   modalButtonIOS: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
+    padding: 10, 
   },
   modalButtonConfirmIOS: {
-    // No specific style needed here if default is fine, or adjust as necessary
-    // fontWeight: 'bold', // fontWeight can be 'normal', 'bold', '100'-'900'
-    // Let's try '600' which is a common semi-bold weight
-    // fontWeight: '600', // This property is for Text styles, not View styles. Removing to fix type error.
+    // fontWeight handled in Text style
   },
   modalButtonTextIOS: {
     fontSize: 17,
-    color: '#007AFF', // iOS blue for button text
+    color: '#0A84FF', 
+    // fontWeight: '600' for Done button is applied directly in JSX
   },
   datePickerIOS: {
-    // Ensure the picker itself doesn't cause layout issues
-    // backgroundColor: 'transparent', // Or match modalContentIOS background
-    // No explicit width/height needed, let it size naturally
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    // width: '100%', // Ensure it takes full width if needed
+    // height: 216, // Standard iOS picker height
   },
   loadingText: {
-    marginTop: 10,
-    color: '#E0E0E0', // Light text for loading
+    marginTop: 15,
+    color: '#B0B0B0', // Slightly brighter loading text
     fontSize: 16,
   },
   errorContainer: {
-    margin: 20,
-    padding: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(50, 50, 50, 0.9)', // Darker, slightly transparent background
+    flex: 1, 
+    justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden', // For BlurView border radius on Android
+    marginHorizontal: 15, 
+    padding: 25, // Increased padding
+    borderRadius: 18,
+    overflow: 'hidden', 
   },
   errorTypeTag: {
     position: 'absolute',
-    top: -1, // Slight overlap for visual effect
-    left: -1,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderTopLeftRadius: 10,
-    borderBottomRightRadius: 10, // Stylish corner
+    top: 0, 
+    left: 0,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderTopLeftRadius: 18, 
+    borderBottomRightRadius: 18, 
   },
   errorTypeTagNetwork: {
-    backgroundColor: '#D32F2F', // Red for network errors
+    backgroundColor: '#D32F2F', 
   },
   errorTypeTagJava: {
-    backgroundColor: '#FFA000', // Amber for Java IO issues
+    backgroundColor: '#FFA000', 
   },
   errorTypeText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 13,
   },
   errorText: {
-    fontSize: 16,
-    color: '#FFCDD2', // Light red for error text
+    fontSize: 17, 
+    color: '#FFDDE2', // Softer red for text
     textAlign: 'center',
-    marginBottom: 15,
-    marginTop: 30, // Space below the tag
-  },
-  troubleshootingStep: {
-    fontSize: 14,
-    color: '#B0BEC5', // Lighter grey for steps
-    textAlign: 'left',
-    alignSelf: 'stretch', // Make text take full width
-    marginLeft: 20, // Indent steps
-    marginBottom: 5,
-  },
-  advancedButton: {
-    marginTop: 15,
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 5,
-    backgroundColor: '#4CAF50', // Green for advanced button
-  },
-  advancedButtonText: {
-    color: '#fff',
-    fontSize: 14,
-  },
-  advancedDetailsContainer: {
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: 'rgba(0,0,0,0.2)', // Darker background for details
-    borderRadius: 5,
-    alignSelf: 'stretch',
-  },
-  advancedDetailsText: {
-    fontSize: 12,
-    color: '#CFD8DC', // Even lighter grey for details
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', // Monospace for details
+    marginBottom: 22,
+    marginTop: 55, 
+    lineHeight: 25, 
   },
   retryButton: {
-    marginTop: 20,
-    backgroundColor: '#007AFF', // Blue for retry
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 8,
+    marginTop: 18,
+    backgroundColor: '#0A84FF', 
+    paddingVertical: 14, // Larger touch target
+    paddingHorizontal: 40,
+    borderRadius: 28, 
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
   },
   retryButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  advancedButton: {
+    marginTop: 22, 
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  advancedButtonText: {
+    color: '#0A84FF', 
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  advancedDetailsContainer: {
+    marginTop: 18,
+    padding: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)', 
+    borderRadius: 12,
+    alignSelf: 'stretch', 
+  },
+  advancedDetailsText: {
+    fontSize: 14,
+    color: '#C0C0C0', 
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginBottom: 9,
+    lineHeight: 20,
   },
   updateButton: {
-    marginTop: 10,
-    backgroundColor: '#555', // Grey for update button
-    paddingVertical: 10,
-    paddingHorizontal: 25,
-    borderRadius: 8,
+    marginTop: 18,
+    backgroundColor: '#555555', 
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 22,
   },
   updateButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '500',
   },
   list: {
-    marginTop: 10,
+    marginTop: 12, 
   },
   listContent: {
-    paddingBottom: 20, // Space at the bottom of the list
+    paddingBottom: 40, 
   },
   sectionHeader: {
-    backgroundColor: '#1C1C1E', // Darker background
+    backgroundColor: 'rgba(198, 165, 86, 0.12)', 
     paddingVertical: 12,
-    paddingHorizontal: 15,
-    marginTop: 15,
-    marginBottom: 5,
+    paddingHorizontal: 18,
+    marginTop: 22, 
+    marginBottom: 12, 
     borderRadius: 12,
-    shadowColor: '#C6A556', // Golden glow
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4, // Android shadow
+    borderLeftWidth: 4,
+    borderLeftColor: '#C6A556', 
   },
   sectionHeaderText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#C6A556', // Golden color
-    textAlign: 'center', // Center alignment
-    textShadowColor: 'rgba(198, 165, 86, 0.3)', // Subtle golden glow
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
+    fontSize: 20, 
+    fontWeight: '600', 
+    color: '#C6A556', 
   },
   hallItem: {
-    backgroundColor: '#1E1E1E', // Slightly lighter dark for hall items
-    padding: 15,
-    marginVertical: 5,
-    borderRadius: 8,
+    backgroundColor: '#1C1C1E', // Darker item background, consistent with iOS modal
+    padding: 18, // Increased padding
+    marginVertical: 7, 
+    borderRadius: 14, 
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12, 
+    shadowRadius: 5,
+    elevation: 4, // Slightly more elevation
   },
   hallName: {
-    fontSize: 18,
+    fontSize: 19, // Larger hall name
     fontWeight: 'bold',
-    color: '#D0D0D0', // Slightly lighter text for hall names
-    marginBottom: 10,
+    color: '#E8E8E8', 
+    marginBottom: 14, 
   },
   slotsContainer: {
-    flexDirection: 'row', // Keep slots horizontal
-    justifyContent: 'space-around', // Distribute space evenly
-    marginTop: 8,
-    gap: 10, // Add gap between morning and evening slots
+    flexDirection: 'row',
+    justifyContent: 'space-between', 
   },
   timeSlotBadge: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 15, // More rounded badges
-    minWidth: 120, // Ensure badges have enough width
-    alignItems: 'center',
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
+    paddingVertical: 6, // Further reduced padding
+    borderRadius: 8, // Further reduced borderRadius
+    flex: 1, 
+    marginHorizontal: 8, // Increased margin to create more space between boxes
+    alignItems: 'center', 
+    minHeight: 50, // Further reduced minHeight
+    justifyContent: 'center', 
+    borderWidth: 1, // Adding a subtle border
+    borderColor: 'rgba(255, 255, 255, 0.1)', // Border for badges
   },
   timeSlotText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
-    color: '#121212', // Dark text for slot type (Morning/Evening)
+    color: '#121212', 
   },
   statusText: {
-    fontSize: 12,
-    color: '#333', // Slightly lighter dark text for status
-    marginTop: 3,
+    fontSize: 14, 
+    color: '#222222', // Darker status text for better contrast on light badges
+    marginTop: 5, 
+    fontWeight: '600', // Bolder status
   },
   availableBadge: {
-    backgroundColor: '#A5D6A7', // Subtle green (pastel green)
+    backgroundColor: '#90EE90', // LightGreen (from user)
+    borderColor: '#5cb85c', // Darker green border
   },
   bookedBadge: {
-    backgroundColor: '#EF9A9A', // Subtle red (pastel red)
+    backgroundColor: '#F08080', // LightCoral (from user)
+    borderColor: '#d9534f', // Darker red border
+  },
+  enquiryBadge: { // Added style for 'Enquiry' or other statuses
+    backgroundColor: '#DAA520', // Goldenrod (from user for 'Enquiry')
+    borderColor: '#b8860b', // Darker gold border
   },
   footerLoader: {
-    paddingVertical: 20,
+    paddingVertical: 25,
+    alignItems: 'center', 
   },
   noHallsContainer: {
-    paddingVertical: 30,
-    alignItems: 'center', // Added to center content
+    flex: 1, 
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   noHallsText: {
-    fontSize: 18,
-    color: '#757575', // Grey text for no halls message
-    marginBottom: 5,
+    fontSize: 19,
+    color: '#999999', 
+    textAlign: 'center',
+    marginBottom: 10,
   },
   tipText: {
-    fontSize: 14,
-    color: '#505050', // Darker grey for tip
+    fontSize: 15,
+    color: '#777777', 
+    textAlign: 'center',
   },
   passwordContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 30, // Increased padding for more empty space
+    paddingHorizontal: 35, // More horizontal padding
     backgroundColor: '#000000',
   },
   passwordLogo: {
-    width: 90, // Slightly larger logo
-    height: 90,
-    marginBottom: 15, // Adjusted margin
+    width: 85,
+    height: 85,
+    marginBottom: 20,
   },
   passwordBrandName: {
-    fontSize: 28, // Slightly larger brand name
-    fontWeight: '600', // Semi-bold for a more refined look
+    fontSize: 28,
+    fontWeight: '600',
     color: '#C6A556',
-    marginBottom: 40, // Increased margin for more separation
+    marginBottom: 60, 
   },
-  // passwordTitle style removed as the Text element is removed
   passwordInput: {
     width: '100%',
-    backgroundColor: '#1A1A1A', // Slightly darker input background
+    backgroundColor: '#1C1C1E', 
     color: '#FFFFFF',
-    paddingHorizontal: 20, // Increased horizontal padding
-    paddingVertical: 18, // Increased vertical padding
-    borderRadius: 12, // More rounded corners
-    marginBottom: 25, // Adjusted margin
-    fontSize: 17, // Standard iOS text size
-    borderColor: '#C6A556',
-    borderWidth: 1,
-    textAlign: 'center', // Center placeholder text
+    paddingHorizontal: 22,
+    paddingVertical: 18, 
+    borderRadius: 12, 
+    marginBottom: 25,
+    fontSize: 18, // Larger font size
+    borderColor: '#C6A556', 
+    borderWidth: 1.5, // Slightly thicker border
+    textAlign: 'center',
   },
   passwordError: {
-    color: '#EF9A9A',
-    marginBottom: 20, // Adjusted margin
+    color: '#FF7B7B', // Brighter, more noticeable red
+    marginBottom: 18,
     textAlign: 'center',
-    fontSize: 14, // Slightly smaller error text
+    fontSize: 15, // Larger error text
   },
   passwordButton: {
-    backgroundColor: '#D4AF37',
-    paddingVertical: 18, // Increased vertical padding
-    paddingHorizontal: 40, // Increased horizontal padding
-    borderRadius: 12, // Consistent with input field
-    width: '100%', // Make button full width
-    alignItems: 'center', // Center text in button
+    backgroundColor: '#D4AF37', 
+    paddingVertical: 18,
+    borderRadius: 12, 
+    width: '100%',
+    alignItems: 'center',
+    shadowColor: '#D4AF37',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 5,
   },
   passwordButtonText: {
-    color: '#000000', // Black text
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: '#000000',
+    fontSize: 18, 
+    fontWeight: '600', 
   },
 });

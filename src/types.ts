@@ -3,7 +3,7 @@ export interface HallData {
     location: 'GMK BANQUETS TATHAWADE' | 'MADHURA BANQUET' | 'GMK BANQUETS RAVET'; // Changed to uppercase
     hallName: string;
     timeSlot: 'Morning' | 'Evening';
-    status: 'Available' | 'Booked';
+    status: 'Available' | 'Booked' | 'Enquiry'; // Added 'Enquiry'
 }
 
 // Define a more specific Hall type to include header offsets
